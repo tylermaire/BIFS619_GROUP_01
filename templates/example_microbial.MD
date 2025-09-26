@@ -14,8 +14,9 @@
 
 - **Commands used to download data:**
   ```bash
-  prefetch SRRXXXXXXX
-  fasterq-dump SRRXXXXXXX -O data/
+wget "ftp.sra.ebi.ac.uk/vol1/fastq/SRR890/006/SRR8909476/SRR8909476_1.fastq.gz"
+wget "ftp.sra.ebi.ac.uk/vol1/fastq/SRR890/006/SRR8909476/SRR8909476_2.fastq.gz"
+
 
 ## Quality Control (QC)
 - **Tools Used:** 
