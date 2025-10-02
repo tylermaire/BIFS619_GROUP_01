@@ -6,11 +6,10 @@
 
 ## Data Retrieval
 - **NCBI SRA accessions used:**
-  - SRRXXXXXXX
-  - SRRXXXXXXX
-  - SRRXXXXXXX
-  - SRRXXXXXXX
-  - SRRXXXXXXX
+  - SRR9613403
+  - SRR9613404
+  - SRR9613405
+
 
 - **Commands used to download data:**
 
@@ -51,4 +50,11 @@
 - **Tasks Performed:**  
 - **Deliverables:**  
 - **Interpretation:**  
+
+## Read Alignment 
+- **Tools Used:** 
+- **Tasks Performed:**  
+- **Deliverables:**  
+- **Interpretation:**  
+
 
