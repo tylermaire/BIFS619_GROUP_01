@@ -1,2 +1,2 @@
-# BINF_UMGC_619
-619 Group project template
+# BINF_UMGC_619 | Group #01 Project 
+
