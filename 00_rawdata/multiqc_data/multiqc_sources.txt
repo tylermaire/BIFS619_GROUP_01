@@ -1,0 +1,7 @@
+Module	Section	Sample Name	Source
+FastQC	all_sections	SRR9613403_1	/home/newuser/BIFS619/group_project/BIFS619_GROUP_01/00_rawdata/SRR9613403_1_fastqc.zip
+FastQC	all_sections	SRR9613403_2	/home/newuser/BIFS619/group_project/BIFS619_GROUP_01/00_rawdata/SRR9613403_2_fastqc.zip
+FastQC	all_sections	SRR9613404_1	/home/newuser/BIFS619/group_project/BIFS619_GROUP_01/00_rawdata/SRR9613404_1_fastqc.zip
+FastQC	all_sections	SRR9613404_2	/home/newuser/BIFS619/group_project/BIFS619_GROUP_01/00_rawdata/SRR9613404_2_fastqc.zip
+FastQC	all_sections	SRR9613405_1	/home/newuser/BIFS619/group_project/BIFS619_GROUP_01/00_rawdata/SRR9613405_1_fastqc.zip
+FastQC	all_sections	SRR9613405_2	/home/newuser/BIFS619/group_project/BIFS619_GROUP_01/00_rawdata/SRR9613405_2_fastqc.zip
