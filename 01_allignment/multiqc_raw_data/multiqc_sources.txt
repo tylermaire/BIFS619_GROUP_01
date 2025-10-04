@@ -1,0 +1,7 @@
+Module	Section	Sample Name	Source
+FastQC	all_sections	SRR9613403_2	/home/tylermaire/BIFS619_GROUP_01/01_allignment/SRR9613403_2_fastqc/fastqc_data.txt
+FastQC	all_sections	SRR9613405_1	/home/tylermaire/BIFS619_GROUP_01/01_allignment/SRR9613405_1_fastqc/fastqc_data.txt
+FastQC	all_sections	SRR9613404_1	/home/tylermaire/BIFS619_GROUP_01/01_allignment/SRR9613404_1_fastqc/fastqc_data.txt
+FastQC	all_sections	SRR9613404_2	/home/tylermaire/BIFS619_GROUP_01/01_allignment/SRR9613404_2_fastqc/fastqc_data.txt
+FastQC	all_sections	SRR9613405_2	/home/tylermaire/BIFS619_GROUP_01/01_allignment/SRR9613405_2_fastqc/fastqc_data.txt
+FastQC	all_sections	SRR9613403_1	/home/tylermaire/BIFS619_GROUP_01/01_allignment/SRR9613403_1_fastqc/fastqc_data.txt

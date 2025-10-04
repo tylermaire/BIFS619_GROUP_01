@@ -1,0 +1,17 @@
+Module	Section	Sample Name	Source
+Snippy	snippy	multiqc	/home/tylermaire/BIFS619_GROUP_01/01_allignment/multiqc_raw_data/multiqc.log
+fastp	all_sections	SRR9613403_1	/home/tylermaire/BIFS619_GROUP_01/01_allignment/SRR9613403_fastp.json
+fastp	all_sections	SRR9613405_1	/home/tylermaire/BIFS619_GROUP_01/01_allignment/SRR9613405_fastp.json
+fastp	all_sections	SRR9613404_1	/home/tylermaire/BIFS619_GROUP_01/01_allignment/SRR9613404_fastp.json
+FastQC	all_sections	SRR9613404_trimmed_2	/home/tylermaire/BIFS619_GROUP_01/01_allignment/SRR9613404_trimmed_2_fastqc/fastqc_data.txt
+FastQC	all_sections	SRR9613403_trimmed_1	/home/tylermaire/BIFS619_GROUP_01/01_allignment/SRR9613403_trimmed_1_fastqc/fastqc_data.txt
+FastQC	all_sections	SRR9613405_trimmed_1	/home/tylermaire/BIFS619_GROUP_01/01_allignment/SRR9613405_trimmed_1_fastqc/fastqc_data.txt
+FastQC	all_sections	SRR9613403_2	/home/tylermaire/BIFS619_GROUP_01/01_allignment/SRR9613403_2_fastqc/fastqc_data.txt
+FastQC	all_sections	SRR9613405_1	/home/tylermaire/BIFS619_GROUP_01/01_allignment/SRR9613405_1_fastqc/fastqc_data.txt
+FastQC	all_sections	SRR9613404_1	/home/tylermaire/BIFS619_GROUP_01/01_allignment/SRR9613404_1_fastqc/fastqc_data.txt
+FastQC	all_sections	SRR9613404_trimmed_1	/home/tylermaire/BIFS619_GROUP_01/01_allignment/SRR9613404_trimmed_1_fastqc/fastqc_data.txt
+FastQC	all_sections	SRR9613403_trimmed_2	/home/tylermaire/BIFS619_GROUP_01/01_allignment/SRR9613403_trimmed_2_fastqc/fastqc_data.txt
+FastQC	all_sections	SRR9613404_2	/home/tylermaire/BIFS619_GROUP_01/01_allignment/SRR9613404_2_fastqc/fastqc_data.txt
+FastQC	all_sections	SRR9613405_2	/home/tylermaire/BIFS619_GROUP_01/01_allignment/SRR9613405_2_fastqc/fastqc_data.txt
+FastQC	all_sections	SRR9613405_trimmed_2	/home/tylermaire/BIFS619_GROUP_01/01_allignment/SRR9613405_trimmed_2_fastqc/fastqc_data.txt
+FastQC	all_sections	SRR9613403_1	/home/tylermaire/BIFS619_GROUP_01/01_allignment/SRR9613403_1_fastqc/fastqc_data.txt

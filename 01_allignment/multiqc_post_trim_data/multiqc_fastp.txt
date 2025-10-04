@@ -1,0 +1,4 @@
+Sample	command
+SRR9613403_1	fastp -i SRR9613403_1.fastq.gz -I SRR9613403_2.fastq.gz -o SRR9613403_trimmed_1.fastq.gz -O SRR9613403_trimmed_2.fastq.gz -q 20 -u 30 -n 5 -l 50 --detect_adapter_for_pe -w 10 --html SRR9613403_fastp.html --json SRR9613403_fastp.json 
+SRR9613404_1	fastp -i SRR9613404_1.fastq.gz -I SRR9613404_2.fastq.gz -o SRR9613404_trimmed_1.fastq.gz -O SRR9613404_trimmed_2.fastq.gz -q 20 -u 30 -n 5 -l 50 --detect_adapter_for_pe -w 10 --html SRR9613404_fastp.html --json SRR9613404_fastp.json 
+SRR9613405_1	fastp -i SRR9613405_1.fastq.gz -I SRR9613405_2.fastq.gz -o SRR9613405_trimmed_1.fastq.gz -O SRR9613405_trimmed_2.fastq.gz -q 20 -u 30 -n 5 -l 50 --detect_adapter_for_pe -w 10 --html SRR9613405_fastp.html --json SRR9613405_fastp.json 

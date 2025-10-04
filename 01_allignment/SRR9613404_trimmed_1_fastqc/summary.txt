@@ -1,0 +1,10 @@
+PASS	Basic Statistics	SRR9613404_trimmed_1.fastq.gz
+PASS	Per base sequence quality	SRR9613404_trimmed_1.fastq.gz
+PASS	Per sequence quality scores	SRR9613404_trimmed_1.fastq.gz
+WARN	Per base sequence content	SRR9613404_trimmed_1.fastq.gz
+WARN	Per sequence GC content	SRR9613404_trimmed_1.fastq.gz
+PASS	Per base N content	SRR9613404_trimmed_1.fastq.gz
+WARN	Sequence Length Distribution	SRR9613404_trimmed_1.fastq.gz
+FAIL	Sequence Duplication Levels	SRR9613404_trimmed_1.fastq.gz
+FAIL	Overrepresented sequences	SRR9613404_trimmed_1.fastq.gz
+PASS	Adapter Content	SRR9613404_trimmed_1.fastq.gz
