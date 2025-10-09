@@ -1,0 +1,10 @@
+Assuming unrestricted shared filesystem usage.
+host: ZorosPC
+Building DAG of jobs...
+InputFunctionException in rule download_fastq in file "/home/newuser/BIFS619/group_project/BIFS619_GROUP_01/00_rawdata/fastq_n_ref.smk", line 10:
+Error:
+  AttributeError: 'Wildcards' object has no attribute 'sample'
+Wildcards:
+
+Traceback:
+  File "/home/newuser/BIFS619/group_project/BIFS619_GROUP_01/00_rawdata/fastq_n_ref.smk", line 19, in <lambda> (rule download_fastq, line 17, /home/newuser/BIFS619/group_project/BIFS619_GROUP_01/00_rawdata/fastq_n_ref.smk)

@@ -1,0 +1,115 @@
+Assuming unrestricted shared filesystem usage.
+host: ZorosPC
+Building DAG of jobs...
+Using shell: /usr/bin/bash
+Provided cores: 4
+Rules claiming more threads will be scaled down.
+Job stats:
+job                count
+---------------  -------
+all                    1
+download_fastq         6
+download_genome        1
+total                  8
+
+Select jobs to execute...
+Failed to solve scheduling problem with ILP solver, falling back to greedy scheduler. You likely have to fix your ILP solver installation. Error message: PULP_CBC_CMD: Not Available (check permissions on cbc)
+Execute 4 jobs...
+[Wed Oct  8 17:47:12 2025]
+localrule download_fastq:
+    output: fastq_data/samples/SRR9613403_1.fastq.gz
+    jobid: 1
+    reason: Missing output files: fastq_data/samples/SRR9613403_1.fastq.gz; Code has changed since last execution
+    wildcards: sample=3403, read=1
+    resources: tmpdir=/tmp
+[Wed Oct  8 17:47:12 2025]
+localrule download_fastq:
+    output: fastq_data/samples/SRR9613404_1.fastq.gz
+    jobid: 3
+    reason: Missing output files: fastq_data/samples/SRR9613404_1.fastq.gz
+    wildcards: sample=3404, read=1
+    resources: tmpdir=/tmp
+[Wed Oct  8 17:47:12 2025]
+localrule download_fastq:
+    output: fastq_data/samples/SRR9613405_1.fastq.gz
+    jobid: 5
+    reason: Missing output files: fastq_data/samples/SRR9613405_1.fastq.gz
+    wildcards: sample=3405, read=1
+    resources: tmpdir=/tmp
+[Wed Oct  8 17:47:12 2025]
+localrule download_genome:
+    output: fastq_data/reference/NZ_CP076404.1.fasta
+    jobid: 7
+    reason: Missing output files: fastq_data/reference/NZ_CP076404.1.fasta
+    resources: tmpdir=/tmp
+RuleException:
+CalledProcessError in file "/home/newuser/BIFS619/group_project/BIFS619_GROUP_01/00_rawdata/fastq.smk", line 24:
+Command 'set -euo pipefail;  mkdir -p $(dirname fastq_data/samples/SRR9613404_1.fastq.gz) && echo 'Downloading fastq_data/samples/SRR9613404_1.fastq.gz' && wget ftp.sra.ebi.ac.uk/vol1/fastq/SRR961/404/SRR9613404/SRR9613404_1.fastq.gz -O fastq_data/samples/SRR9613404_1.fastq.gz' returned non-zero exit status 8.
+[Wed Oct  8 17:47:12 2025]
+Error in rule download_fastq:
+    message: None
+    jobid: 3
+    output: fastq_data/samples/SRR9613404_1.fastq.gz
+    shell:
+        mkdir -p $(dirname fastq_data/samples/SRR9613404_1.fastq.gz) && echo 'Downloading fastq_data/samples/SRR9613404_1.fastq.gz' && wget ftp.sra.ebi.ac.uk/vol1/fastq/SRR961/404/SRR9613404/SRR9613404_1.fastq.gz -O fastq_data/samples/SRR9613404_1.fastq.gz
+        (command exited with non-zero exit code)
+Removing output files of failed job download_fastq since they might be corrupted:
+fastq_data/samples/SRR9613404_1.fastq.gz
+RuleException:
+CalledProcessError in file "/home/newuser/BIFS619/group_project/BIFS619_GROUP_01/00_rawdata/fastq.smk", line 24:
+Command 'set -euo pipefail;  mkdir -p $(dirname fastq_data/samples/SRR9613405_1.fastq.gz) && echo 'Downloading fastq_data/samples/SRR9613405_1.fastq.gz' && wget ftp.sra.ebi.ac.uk/vol1/fastq/SRR961/405/SRR9613405/SRR9613405_1.fastq.gz -O fastq_data/samples/SRR9613405_1.fastq.gz' returned non-zero exit status 8.
+[Wed Oct  8 17:47:12 2025]
+Error in rule download_fastq:
+    message: None
+    jobid: 5
+    output: fastq_data/samples/SRR9613405_1.fastq.gz
+    shell:
+        mkdir -p $(dirname fastq_data/samples/SRR9613405_1.fastq.gz) && echo 'Downloading fastq_data/samples/SRR9613405_1.fastq.gz' && wget ftp.sra.ebi.ac.uk/vol1/fastq/SRR961/405/SRR9613405/SRR9613405_1.fastq.gz -O fastq_data/samples/SRR9613405_1.fastq.gz
+        (command exited with non-zero exit code)
+Removing output files of failed job download_fastq since they might be corrupted:
+fastq_data/samples/SRR9613405_1.fastq.gz
+RuleException:
+CalledProcessError in file "/home/newuser/BIFS619/group_project/BIFS619_GROUP_01/00_rawdata/fastq.smk", line 24:
+Command 'set -euo pipefail;  mkdir -p $(dirname fastq_data/samples/SRR9613403_1.fastq.gz) && echo 'Downloading fastq_data/samples/SRR9613403_1.fastq.gz' && wget ftp.sra.ebi.ac.uk/vol1/fastq/SRR961/403/SRR9613403/SRR9613403_1.fastq.gz -O fastq_data/samples/SRR9613403_1.fastq.gz' returned non-zero exit status 8.
+[Wed Oct  8 17:47:12 2025]
+Error in rule download_fastq:
+    message: None
+    jobid: 1
+    output: fastq_data/samples/SRR9613403_1.fastq.gz
+    shell:
+        mkdir -p $(dirname fastq_data/samples/SRR9613403_1.fastq.gz) && echo 'Downloading fastq_data/samples/SRR9613403_1.fastq.gz' && wget ftp.sra.ebi.ac.uk/vol1/fastq/SRR961/403/SRR9613403/SRR9613403_1.fastq.gz -O fastq_data/samples/SRR9613403_1.fastq.gz
+        (command exited with non-zero exit code)
+Removing output files of failed job download_fastq since they might be corrupted:
+fastq_data/samples/SRR9613403_1.fastq.gz
+[Wed Oct  8 17:47:12 2025]
+Finished jobid: 7 (Rule: download_genome)
+1 of 8 steps (12%) done
+Shutting down, this might take some time.
+Exiting because a job execution failed. Look below for error messages
+[Wed Oct  8 17:47:12 2025]
+Error in rule download_fastq:
+    message: None
+    jobid: 1
+    output: fastq_data/samples/SRR9613403_1.fastq.gz
+    shell:
+        mkdir -p $(dirname fastq_data/samples/SRR9613403_1.fastq.gz) && echo 'Downloading fastq_data/samples/SRR9613403_1.fastq.gz' && wget ftp.sra.ebi.ac.uk/vol1/fastq/SRR961/403/SRR9613403/SRR9613403_1.fastq.gz -O fastq_data/samples/SRR9613403_1.fastq.gz
+        (command exited with non-zero exit code)
+[Wed Oct  8 17:47:12 2025]
+Error in rule download_fastq:
+    message: None
+    jobid: 3
+    output: fastq_data/samples/SRR9613404_1.fastq.gz
+    shell:
+        mkdir -p $(dirname fastq_data/samples/SRR9613404_1.fastq.gz) && echo 'Downloading fastq_data/samples/SRR9613404_1.fastq.gz' && wget ftp.sra.ebi.ac.uk/vol1/fastq/SRR961/404/SRR9613404/SRR9613404_1.fastq.gz -O fastq_data/samples/SRR9613404_1.fastq.gz
+        (command exited with non-zero exit code)
+[Wed Oct  8 17:47:12 2025]
+Error in rule download_fastq:
+    message: None
+    jobid: 5
+    output: fastq_data/samples/SRR9613405_1.fastq.gz
+    shell:
+        mkdir -p $(dirname fastq_data/samples/SRR9613405_1.fastq.gz) && echo 'Downloading fastq_data/samples/SRR9613405_1.fastq.gz' && wget ftp.sra.ebi.ac.uk/vol1/fastq/SRR961/405/SRR9613405/SRR9613405_1.fastq.gz -O fastq_data/samples/SRR9613405_1.fastq.gz
+        (command exited with non-zero exit code)
+Complete log(s): /home/newuser/BIFS619/group_project/BIFS619_GROUP_01/00_rawdata/.snakemake/log/2025-10-08T174711.761075.snakemake.log
+WorkflowError:
+At least one job did not complete successfully.
