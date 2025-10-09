@@ -1,0 +1,9 @@
+Assuming unrestricted shared filesystem usage.
+host: ZorosPC
+Building DAG of jobs...
+MissingInputException in rule fastqc_individual in file "/home/newuser/BIFS619/group_project/BIFS619_GROUP_01/00_rawdata/fastQC/fastqc.smk", line 18:
+Missing input files for rule fastqc_individual:
+    output: BIFS619_GROUP_01/00_rawdata/fastQC/SRR9613403_1_fastqc.html, BIFS619_GROUP_01/00_rawdata/fastQC/SRR9613403_1_fastqc.zip
+    wildcards: sample=SRR9613403_1
+    affected files:
+        BIFS619_GROUP_01/00_rawdata/fastq_data/samples/SRR9613403_1.fastq.gz

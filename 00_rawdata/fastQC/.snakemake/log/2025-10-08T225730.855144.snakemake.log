@@ -1,0 +1,2 @@
+WorkflowError in file "/home/newuser/BIFS619/group_project/BIFS619_GROUP_01/00_rawdata/fastQC/qa.smk", line 2:
+Workflow defines configfile 00_rawdata/config/QAConfig.yaml but it is not present or accessible (full checked path: /home/newuser/BIFS619/group_project/BIFS619_GROUP_01/00_rawdata/fastQC/00_rawdata/config/QAConfig.yaml).

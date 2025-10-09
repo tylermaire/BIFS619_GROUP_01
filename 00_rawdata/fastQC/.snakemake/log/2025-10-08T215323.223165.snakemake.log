@@ -1,0 +1,3 @@
+SyntaxError in file "/home/newuser/BIFS619/group_project/BIFS619_GROUP_01/00_rawdata/fastQC/fastqc.smk", line 12:
+Unexpected keyword envs in rule definition:
+None
