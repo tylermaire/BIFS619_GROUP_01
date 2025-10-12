@@ -32,6 +32,17 @@ sudo apt install python3 fastp hisat2
 Raw FASTQ files are located in the `../00_raw_data/` directory after cloning the repository.  
 No need to download BAM files—they will be generated automatically in the alignment step.
 
+---
+
+### **IMPORTANT: Update File Paths**
+
+Before running any scripts in the `code/` folder, **make sure to update file paths inside each script to match your own computer’s directory structure** (e.g., input/output folders, reference genome locations, etc.).
+
+Open each `.sh` or `.py` file in `01_allignment/code/` and edit any paths as needed.  
+Scripts may use absolute or relative paths—adjust them to match where your files are stored.
+
+---
+
 ### 4. Run the Workflow
 
 #### a. Quality Control
@@ -61,7 +72,6 @@ Check summary tables and plots in `QC/tables/`, `QC/plots/`, `alignment/tables/`
 ## For more details on folder contents and outputs, see below.
 
 ---
-
 # 01_allignment
 
 This folder contains all files and outputs related to alignment, quality control, and associated analysis scripts for the BIFS619 group project.
