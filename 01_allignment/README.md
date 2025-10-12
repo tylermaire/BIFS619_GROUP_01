@@ -27,13 +27,10 @@ sudo apt update
 sudo apt install python3 fastp hisat2
 ```
 
-### 3. Download Large Files (BAM)
+### 3. Prepare Raw Data
 
-BAM files are stored externally due to GitHub limits.  
-Download them from:  
-[Google Drive - BIFS619 BAM files](https://drive.google.com/drive/folders/1KW6iuHfbfBAplelDN6l0az1ePj9p1X8c?usp=sharing)
-
-Place the downloaded BAM files in `01_allignment/alignment/bam/`.
+Raw FASTQ files are located in the `../00_raw_data/` directory after cloning the repository.  
+No need to download BAM files—they will be generated automatically in the alignment step.
 
 ### 4. Run the Workflow
 
@@ -42,7 +39,6 @@ Place the downloaded BAM files in `01_allignment/alignment/bam/`.
 ```bash
 bash code/read_cleaning.sh
 ```
-
 This script will process raw FASTQ files, save cleaned reads and QC outputs to `QC/`.
 
 #### b. Alignment
@@ -50,8 +46,7 @@ This script will process raw FASTQ files, save cleaned reads and QC outputs to `
 ```bash
 bash code/align_reads.sh
 ```
-
-This will align the cleaned reads and generate alignment logs, BAMs, and metrics in `alignment/`.
+This will align the cleaned reads and generate BAM files, logs, and metrics in `alignment/`.
 
 #### c. Summarize Results
 
@@ -59,12 +54,13 @@ This will align the cleaned reads and generate alignment logs, BAMs, and metrics
 python3 code/summarize_qc.py
 python3 code/summarize_alignment.py
 ```
-
 Check summary tables and plots in `QC/tables/`, `QC/plots/`, `alignment/tables/`, and `alignment/plots/`.
 
 ---
 
 ## For more details on folder contents and outputs, see below.
+
+---
 
 # 01_allignment
 
@@ -95,8 +91,7 @@ Contains files related to the alignment step:
 - `tables/`  
   CSV tables reporting alignment metrics for all processed samples.
 - `bam/`  
-  **BAM files are not stored in this repository due to GitHub’s file size limits.  
-  Instead, download them from our Google Drive:**  
+  BAM files are generated during the alignment step and stored in this folder. If you wish to use pre-generated BAM files, you can download them from our Google Drive:  
   [Google Drive - BIFS619 BAM files](https://drive.google.com/drive/folders/1KW6iuHfbfBAplelDN6l0az1ePj9p1X8c?usp=sharing)
 
 #### Example Alignment Output
@@ -124,6 +119,4 @@ Contains analysis scripts used in the pipeline:
 
 ---
 
-
 _Last updated: October 2025_
-
