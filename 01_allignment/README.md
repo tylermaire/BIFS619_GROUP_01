@@ -1,54 +1,70 @@
-## Quick Start
+# 01_allignment
 
-Follow these steps to reproduce the QC and alignment workflow:
+## Getting Started
 
-### 1. Install Dependencies
+### 1. Clone the Repository
 
-- Python 3.x (for summarize scripts)
+Open a terminal and run:
+
+```bash
+git clone https://github.com/FaithIgomodu/BIFS619_GROUP_01.git
+cd BIFS619_GROUP_01/01_allignment
+```
+
+### 2. Install Required Software
+
+Make sure you have the following tools installed on your computer:
+
+- Python 3.x
 - Bash
 - FASTP
 - HISAT2
 
-On Ubuntu, you can install with:
+For Ubuntu/Linux, you can install with:
+
 ```bash
 sudo apt update
 sudo apt install python3 fastp hisat2
 ```
 
-### 2. Quality Control
+### 3. Download Large Files (BAM)
 
-Run the read cleaning and QC script:
+BAM files are stored externally due to GitHub limits.  
+Download them from:  
+[Google Drive - BIFS619 BAM files](https://drive.google.com/drive/folders/1KW6iuHfbfBAplelDN6l0az1ePj9p1X8c?usp=sharing)
+
+Place the downloaded BAM files in `01_allignment/alignment/bam/`.
+
+### 4. Run the Workflow
+
+#### a. Quality Control
+
 ```bash
 bash code/read_cleaning.sh
 ```
-This will process raw FASTQ files, output cleaned files to `QC/cleaned_fastq/`, and save QC reports to `QC/plots/` and `QC/tables/`.
 
-### 3. Alignment
+This script will process raw FASTQ files, save cleaned reads and QC outputs to `QC/`.
 
-Run the alignment script:
+#### b. Alignment
+
 ```bash
 bash code/align_reads.sh
 ```
-This will align cleaned FASTQ files to the reference, generating logs and metrics in `alignment/logs/` and `alignment/tables/`.
 
-### 4. Summarize Results
+This will align the cleaned reads and generate alignment logs, BAMs, and metrics in `alignment/`.
 
-Generate summary tables and plots:
+#### c. Summarize Results
+
 ```bash
 python3 code/summarize_qc.py
 python3 code/summarize_alignment.py
 ```
-Check outputs in the respective `plots/` and `tables/` folders.
 
-### 5. BAM Files
-
-Due to GitHub's file size limit, BAM files are stored on Google Drive:  
-[Google Drive - BIFS619 BAM files](https://drive.google.com/drive/folders/1KW6iuHfbfBAplelDN6l0az1ePj9p1X8c?usp=sharing)
+Check summary tables and plots in `QC/tables/`, `QC/plots/`, `alignment/tables/`, and `alignment/plots/`.
 
 ---
 
-**See individual script README files or comments for options and customization. If you run into issues, please open a GitHub Issue.**
-
+## For more details on folder contents and outputs, see below.
 
 # 01_allignment
 
@@ -110,3 +126,4 @@ Contains analysis scripts used in the pipeline:
 
 
 _Last updated: October 2025_
+
