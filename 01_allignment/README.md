@@ -1,3 +1,55 @@
+## Quick Start
+
+Follow these steps to reproduce the QC and alignment workflow:
+
+### 1. Install Dependencies
+
+- Python 3.x (for summarize scripts)
+- Bash
+- FASTP
+- HISAT2
+
+On Ubuntu, you can install with:
+```bash
+sudo apt update
+sudo apt install python3 fastp hisat2
+```
+
+### 2. Quality Control
+
+Run the read cleaning and QC script:
+```bash
+bash code/read_cleaning.sh
+```
+This will process raw FASTQ files, output cleaned files to `QC/cleaned_fastq/`, and save QC reports to `QC/plots/` and `QC/tables/`.
+
+### 3. Alignment
+
+Run the alignment script:
+```bash
+bash code/align_reads.sh
+```
+This will align cleaned FASTQ files to the reference, generating logs and metrics in `alignment/logs/` and `alignment/tables/`.
+
+### 4. Summarize Results
+
+Generate summary tables and plots:
+```bash
+python3 code/summarize_qc.py
+python3 code/summarize_alignment.py
+```
+Check outputs in the respective `plots/` and `tables/` folders.
+
+### 5. BAM Files
+
+Due to GitHub's file size limit, BAM files are stored on Google Drive:  
+[Google Drive - BIFS619 BAM files](https://drive.google.com/drive/folders/1KW6iuHfbfBAplelDN6l0az1ePj9p1X8c?usp=sharing)
+
+---
+
+**See individual script README files or comments for options and customization. If you run into issues, please open a GitHub Issue.**
+
+
 # 01_allignment
 
 This folder contains all files and outputs related to alignment, quality control, and associated analysis scripts for the BIFS619 group project.
@@ -55,5 +107,6 @@ Contains analysis scripts used in the pipeline:
 - See each subfolder’s README, if present, for more details.
 
 ---
+
 
 _Last updated: October 2025_
