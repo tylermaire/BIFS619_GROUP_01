@@ -7,11 +7,14 @@ This folder contains all files and outputs related to alignment, quality control
 ### `QC/`
 Contains outputs from the quality control step, including:
 - `cleaned_fastq/`  
-  Contains cleaned FASTQ files and FASTP reports (HTML/JSON) for each sample, generated during sequence quality filtering.
+  Cleaned FASTQ files and FASTP reports (HTML/JSON) for each sample, generated during sequence quality filtering.
 - `plots/`  
-  Visualization files (e.g. barplots) showing metrics such as pre- and post-cleaning read counts.
+  Visualization files (see example below) showing metrics such as pre- and post-cleaning read counts.
 - `tables/`  
   CSV tables summarizing QC metrics, including numbers of reads before and after cleaning for each sample.
+
+#### Example QC Output
+![Pre/Post Cleaning Barplot](QC/plots/pre_post_cleaning_barplot.png)
 
 ### `alignment/`
 Contains files related to the alignment step:
@@ -20,13 +23,16 @@ Contains files related to the alignment step:
 - `logs/`  
   Log files and summary reports from HISAT2 alignment runs.
 - `plots/`  
-  Barplots visualizing mapping percentages and read counts per sample post-alignment.
+  Barplots visualizing mapping percentages and read counts per sample post-alignment (see example below).
 - `tables/`  
   CSV tables reporting alignment metrics for all processed samples.
 - `bam/`  
   **BAM files are not stored in this repository due to GitHub’s file size limits.  
   Instead, download them from our Google Drive:**  
   [Google Drive - BIFS619 BAM files](https://drive.google.com/drive/folders/1KW6iuHfbfBAplelDN6l0az1ePj9p1X8c?usp=sharing)
+
+#### Example Alignment Output
+![Mapping Percent Barplot](alignment/plots/mapping_percent_barplot.png)
 
 ### `code/`
 Contains analysis scripts used in the pipeline:
@@ -51,8 +57,3 @@ Contains analysis scripts used in the pipeline:
 ---
 
 _Last updated: October 2025_
-
----
-
-![image2](image2)
-![image3](image3)
