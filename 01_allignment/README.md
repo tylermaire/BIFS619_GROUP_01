@@ -1,4 +1,4 @@
-# 01_allignment
+# 01_alignment
 
 ## Getting Started
 
@@ -130,3 +130,4 @@ Contains analysis scripts used in the pipeline:
 ---
 
 _Last updated: October 2025_
+
