@@ -1,2 +1,0 @@
-WorkflowError in file "/home/newuser/BIFS619/group_project/BIFS619_GROUP_01/00_rawdata/fastQC/fastQC.smk", line 1:
-Workflow defines configfile qualityConfig.yaml but it is not present or accessible (full checked path: /home/newuser/BIFS619/group_project/BIFS619_GROUP_01/00_rawdata/fastQC/qualityConfig.yaml).

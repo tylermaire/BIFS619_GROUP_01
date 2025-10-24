@@ -1,3 +1,0 @@
-NameError in file "/home/newuser/BIFS619/group_project/BIFS619_GROUP_01/00_rawdata/fastQC/fastqc_n_multiqc.smk", line 30:
-name 'SAMPLES' is not defined
-  File "/home/newuser/BIFS619/group_project/BIFS619_GROUP_01/00_rawdata/fastQC/fastqc_n_multiqc.smk", line 30, in <module>
