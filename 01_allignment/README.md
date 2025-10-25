@@ -89,6 +89,6 @@ After running, the script will populate the `01_allignment` directory:
 ```
 
 ## Contributors
--   BIFS619 Group 01 Team Members
--   Tyler Maire (tylermaire, last updated 2025-10-25)
+-   Tyler Maire 
+
 
