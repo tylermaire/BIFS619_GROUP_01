@@ -2,6 +2,7 @@
 # ====================================================================================
 # BIFS619_GROUP_01 RNA-Seq Analysis Master Pipeline
 # Author: Group 01 (Master code compiled by Tyler Maire)
+# Updated: Replaced STEP 0 SRA download with robust ENA-based direct fastq download
 # ====================================================================================
 
 set -euo pipefail
@@ -54,7 +55,6 @@ THREADS="${THREADS:-8}"
 RAW_FASTQ_DIR="${BASE_DIR}/00_rawdata/fastq_data/samples"
 REFERENCE_DIR="${BASE_DIR}/00_rawdata/fastq_data/reference"
 REFERENCE_FASTA="${REFERENCE_DIR}/GCF_000005845.2.fna"
-REFERENCE_FASTA_GZ="${REFERENCE_FASTA}.gz"
 REFERENCE_GTF="${REFERENCE_DIR}/test.gtf"
 REFERENCE_SAF="${REFERENCE_DIR}/test.saf"
 FASTQC_OUT="${BASE_DIR}/00_rawdata/fastQC"
@@ -97,7 +97,7 @@ echo "Checking required software..."
 check_dep() { command -v "$1" >/dev/null 2>&1 && echo "✓ $1 is installed" || { echo "✗ $1 missing"; return 1; }; }
 missing=0
 
-for bin in fastqc multiqc fastp hisat2 samtools featureCounts wget python3 gzip gunzip; do
+for bin in fastqc multiqc fastp hisat2 samtools featureCounts wget curl python3 gzip gunzip; do
   check_dep "$bin" || missing=1
 done
 
@@ -105,8 +105,8 @@ done
 if command -v fasterq-dump >/dev/null 2>&1 || command -v fastq-dump >/dev/null 2>&1 || command -v prefetch >/dev/null 2>&1; then
   echo "✓ SRA tools are installed"
 else
-  echo "✗ SRA tools missing (fasterq-dump/fastq-dump/prefetch). SRA download will be skipped."
-  RUN_SRA_DOWNLOAD=false
+  echo "✗ SRA tools missing (fasterq-dump/fastq-dump/prefetch). The script will attempt direct ENA downloads."
+  # do not automatically disable RUN_SRA_DOWNLOAD here; ENA fallback will be attempted below
 fi
 
 if command -v Rscript >/dev/null 2>&1; then
@@ -119,110 +119,197 @@ fi
 [ $missing -eq 1 ] && echo "Some tools are missing. The pipeline will run only the steps that can proceed."
 
 ## ====================================================================================
-# STEP 0 — SRA DOWNLOAD (robust, multi-fallback)
+# STEP 0 — DIRECT DOWNLOAD FROM ENA (robust, firewall-friendly)
+# Replaces older sralite/fasterq-dump block with an ENA-based downloader that:
+#  - queries ENA filereport for fastq FTP links
+#  - downloads all returned fastq files for each SRR into RAW_FASTQ_DIR
+#  - standardizes filenames to <SAMPLE>_1.fastq.gz and <SAMPLE>_2.fastq.gz when possible
 # ====================================================================================
 echo "=== STEP 0: Preparing raw data ==="
 mkdir -p "${RAW_FASTQ_DIR}"
-CACHE="${BASE_DIR}/sra_cache"
+CACHE="${BASE_DIR}/sra_http_cache"
 mkdir -p "$CACHE"
 
-# Helper: robust downloader that tries prefetch+fasterq-dump, fasterq-dump directly, then fastq-dump.
-download_sra() {
-  local srr="$1"
-  echo "Downloading ${srr}..."
+download_from_ena() {
+  local sample="$1"
+  echo "Downloading ${sample} via ENA portal..."
 
-  # Try prefetch -> fasterq-dump (preferred)
-  if command -v prefetch >/dev/null 2>&1; then
-    echo "[INFO] Using prefetch to fetch ${srr} into cache..."
-    if ! prefetch -O "$CACHE" "$srr"; then
-      echo "[WARN] prefetch failed for ${srr}; will try direct fasterq-dump on accession."
+  # query ENA filereport for fastq_ftp field; result includes semicolon-separated ftp paths
+  ena_api="https://www.ebi.ac.uk/ena/portal/api/filereport?accession=${sample}&result=read_run&fields=fastq_ftp"
+  ena_resp=$(curl -s "$ena_api" || true)
+  if [ -z "$ena_resp" ]; then
+    echo "[WARN] ENA query returned empty for ${sample}"
+    return 1
+  fi
+
+  # ENA filereport returns a header line and then values; skip header
+  # Keep CRs trimmed
+  fastq_line=$(echo "$ena_resp" | tail -n +2 | tr -d '\r' | tr -d '\n')
+  if [ -z "$fastq_line" ]; then
+    echo "[WARN] No fastq_ftp entries found in ENA response for ${sample}"
+    return 1
+  fi
+
+  # fastq_line contains semicolon-separated ftp paths (no scheme)
+  IFS=';' read -ra urls <<< "$fastq_line"
+
+  downloaded=0
+  for url in "${urls[@]}"; do
+    url=$(echo "$url" | sed 's/\r//g' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+    [ -z "$url" ] && continue
+
+    # If URL has no scheme, add ftp://
+    if [[ "$url" =~ ^[a-zA-Z]+:// ]]; then
+      full_url="$url"
     else
-      # locate .sra or related file in cache
-      sra_path=$(find "$CACHE" -type f -iname "${srr}*.sra" -print -quit || true)
-      sra_path=${sra_path:-$(find "$CACHE" -type f -iname "${srr}*.sralite*" -print -quit || true)}
-      if [ -n "${sra_path}" ]; then
-        echo "[INFO] Found downloaded SRA file: ${sra_path}"
-        # Prefer fasterq-dump but avoid passing flags that some versions don't accept.
-        if command -v fasterq-dump >/dev/null 2>&1; then
-          # Check whether fasterq-dump supports --split-files (some builds do)
-          if fasterq-dump --help 2>&1 | grep -q -- '--split-files'; then
-            fasterq-dump --split-files -O "$RAW_FASTQ_DIR" --threads "$THREADS" "$sra_path" || fasterq-dump --split-files -O "$RAW_FASTQ_DIR" "$sra_path"
-          else
-            # fallback to minimal invocation (some versions expect simple args)
-            fasterq-dump -O "$RAW_FASTQ_DIR" "$sra_path" || true
-          fi
-        elif command -v fastq-dump >/dev/null 2>&1; then
-          fastq-dump --split-files -O "$RAW_FASTQ_DIR" "$sra_path"
-        else
-          echo "[ERROR] No fastq extraction tool available to convert $sra_path"
-          return 1
-        fi
-      else
-        echo "[WARN] prefetch succeeded but .sra file couldn't be located. Trying network fasterq-dump on accession..."
-        # fallthrough to direct network download attempt below
-        :
+      full_url="ftp://${url}"
+    fi
+
+    outname=$(basename "$url")
+    outpath="${RAW_FASTQ_DIR}/${outname}"
+
+    echo "[INFO] Downloading ${full_url} -> ${outpath}"
+    # use wget with -c to resume partial downloads
+    if wget -c -O "$outpath" "$full_url"; then
+      downloaded=$((downloaded+1))
+    else
+      echo "[WARN] wget failed for ${full_url}"
+      rm -f "$outpath" || true
+    fi
+  done
+
+  if [ "$downloaded" -eq 0 ]; then
+    echo "[WARN] No files downloaded from ENA for ${sample}"
+    return 1
+  fi
+
+  # Standardize filenames:
+  # If ENA returned files named "<sample>_1.fastq.gz" and "<sample>_2.fastq.gz", nothing to do.
+  # Otherwise, if it returned a single file <sample>.fastq.gz, rename to <sample>_1.fastq.gz.
+  # If it returned two files with other names, rename them in order to _1 and _2.
+  found=( $(ls "${RAW_FASTQ_DIR}/${sample}"* 2>/dev/null || true) )
+  if [ ${#found[@]} -eq 0 ]; then
+    # attempt to locate files by looking for basename starting with sample (case-insensitive)
+    found=( $(ls "${RAW_FASTQ_DIR}" | grep -i "^${sample}" 2>/dev/null || true) )
+    # prefix with directory
+    if [ ${#found[@]} -gt 0 ]; then
+      tmp=()
+      for f in "${found[@]}"; do tmp+=( "${RAW_FASTQ_DIR}/${f}" ); done
+      found=("${tmp[@]}")
+    fi
+  fi
+
+  # If already have *_1 and *_2, we're done
+  if [ -f "${RAW_FASTQ_DIR}/${sample}_1.fastq.gz" ] && [ -f "${RAW_FASTQ_DIR}/${sample}_2.fastq.gz" ]; then
+    echo "[OK] Files for ${sample} already present."
+    return 0
+  fi
+
+  # If exactly one matched file, rename to sample_1
+  if [ ${#found[@]} -eq 1 ]; then
+    src="${found[0]}"
+    mv -f "$src" "${RAW_FASTQ_DIR}/${sample}_1.fastq.gz"
+    echo "[INFO] Single-file run: renamed $(basename "$src") -> ${sample}_1.fastq.gz"
+    return 0
+  fi
+
+  # If exactly two matched files and none are already *_1/_2, assign by checking basename for _1/_2 else by order
+  if [ ${#found[@]} -eq 2 ]; then
+    b1=$(basename "${found[0]}")
+    b2=$(basename "${found[1]}")
+    if [[ "$b1" == *"_1.fastq.gz" || "$b1" == *"_2.fastq.gz" || "$b2" == *"_1.fastq.gz" || "$b2" == *"_2.fastq.gz" ]]; then
+      # If names indicate read number, move to standardized names
+      for f in "${found[@]}"; do
+        base=$(basename "$f")
+        if [[ "$base" == *"_1.fastq.gz" ]]; then mv -f "$f" "${RAW_FASTQ_DIR}/${sample}_1.fastq.gz"; fi
+        if [[ "$base" == *"_2.fastq.gz" ]]; then mv -f "$f" "${RAW_FASTQ_DIR}/${sample}_2.fastq.gz"; fi
+      done
+      # Check both exist, else fallback to ordering
+      if [ -f "${RAW_FASTQ_DIR}/${sample}_1.fastq.gz" ] && [ -f "${RAW_FASTQ_DIR}/${sample}_2.fastq.gz" ]; then
+        echo "[OK] Renamed paired files for ${sample}"
+        return 0
       fi
     fi
-  fi
 
-  # If we reached here, try using fasterq-dump directly on accession (it can download remotely)
-  if command -v fasterq-dump >/dev/null 2>&1; then
-    # Prefer long options if supported, otherwise minimal call
-    if fasterq-dump --help 2>&1 | grep -q -- '--split-files'; then
-      echo "[INFO] Using fasterq-dump (network mode) for ${srr}..."
-      fasterq-dump --split-files -O "$RAW_FASTQ_DIR" --threads "$THREADS" "$srr" || true
-    else
-      echo "[INFO] Using fasterq-dump (minimal args) for ${srr}..."
-      fasterq-dump -O "$RAW_FASTQ_DIR" "$srr" || true
-    fi
-  elif command -v fastq-dump >/dev/null 2>&1; then
-    echo "[INFO] Using fastq-dump for ${srr}..."
-    fastq-dump --split-files -O "$RAW_FASTQ_DIR" "$srr" || true
-  else
-    echo "[ERROR] No SRA fastq extractor available for ${srr}"
-    return 1
-  fi
-
-  # Move any outputs from $HOME or current dir (some versions write there)
-  for f in "${HOME}/${srr}.fastq" "${HOME}/${srr}_1.fastq" "${HOME}/${srr}_2.fastq" \
-           "./${srr}.fastq" "./${srr}_1.fastq" "./${srr}_2.fastq"; do
-    [ -f "$f" ] && mv -f "$f" "${RAW_FASTQ_DIR}/"
-  done
-
-  # gzip any produced .fastq (skip if already gzipped)
-  for f in "${RAW_FASTQ_DIR}/${srr}_1.fastq" "${RAW_FASTQ_DIR}/${srr}_2.fastq" "${RAW_FASTQ_DIR}/${srr}.fastq"; do
-    if [ -f "$f" ]; then
-      gzip -f "$f"
-    fi
-  done
-
-  # Validate at least one pair/fastq present
-  if [ -s "${RAW_FASTQ_DIR}/${srr}_1.fastq.gz" ] || [ -s "${RAW_FASTQ_DIR}/${srr}_2.fastq.gz" ] || [ -s "${RAW_FASTQ_DIR}/${srr}.fastq.gz" ]; then
-    echo "[OK] ${srr} downloaded/converted to FASTQ."
+    # fallback: rename the two files by lexical order to _1 and _2
+    # sort to keep deterministic assignment
+    IFS=$'\n' sorted=( $(printf "%s\n" "${found[@]}" | sort) )
+    idx=1
+    for f in "${sorted[@]}"; do
+      mv -f "$f" "${RAW_FASTQ_DIR}/${sample}_${idx}.fastq.gz"
+      echo "[INFO] Assigned $(basename "$f") -> ${sample}_${idx}.fastq.gz"
+      idx=$((idx+1))
+    done
     return 0
-  else
-    echo "[FAIL] ${srr} FASTQ files missing or empty after attempted download."
-    return 1
   fi
+
+  # If more than two files returned (sometimes ENA returns technical files), try to pick those containing '_1' and '_2' first
+  if [ ${#found[@]} -gt 2 ]; then
+    # prefer files that contain "_1.fastq" and "_2.fastq"
+    r1=$(ls "${RAW_FASTQ_DIR}" | grep -i "^${sample}.*_1.*\.fastq" 2>/dev/null | head -n1 || true)
+    r2=$(ls "${RAW_FASTQ_DIR}" | grep -i "^${sample}.*_2.*\.fastq" 2>/dev/null | head -n1 || true)
+    if [ -n "$r1" ] && [ -n "$r2" ]; then
+      mv -f "${RAW_FASTQ_DIR}/${r1}" "${RAW_FASTQ_DIR}/${sample}_1.fastq.gz"
+      mv -f "${RAW_FASTQ_DIR}/${r2}" "${RAW_FASTQ_DIR}/${sample}_2.fastq.gz"
+      echo "[OK] Selected paired files for ${sample}"
+      return 0
+    fi
+
+    # otherwise pick the two largest files (likely the reads) and assign by size-descending then _1/_2 by order
+    largest=( $(ls -S "${RAW_FASTQ_DIR}" | grep -i "^${sample}" | head -n2 || true) )
+    if [ ${#largest[@]} -eq 2 ]; then
+      mv -f "${RAW_FASTQ_DIR}/${largest[0]}" "${RAW_FASTQ_DIR}/${sample}_1.fastq.gz"
+      mv -f "${RAW_FASTQ_DIR}/${largest[1]}" "${RAW_FASTQ_DIR}/${sample}_2.fastq.gz"
+      echo "[OK] Picked two largest files and renamed for ${sample}"
+      return 0
+    fi
+  fi
+
+  # If nothing matched/standardized, warn and return failure
+  echo "[WARN] Could not standardize downloaded files for ${sample}; found ${#found[@]} candidate(s)."
+  ls -lah "${RAW_FASTQ_DIR}" | sed -n '1,200p'
+  return 1
 }
 
 if [ "${RUN_SRA_DOWNLOAD}" = true ]; then
   echo "[INFO] Downloading: ${SAMPLES[*]}"
-
   for sample in "${SAMPLES[@]}"; do
     echo "----"
-    if ! download_sra "$sample"; then
-      echo "[WARN] Download/conversion failed for ${sample}. Continuing to next sample."
+    if download_from_ena "$sample"; then
+      echo "[OK] ${sample} successfully downloaded/converted."
+    else
+      echo "[WARN] ${sample} download failed via ENA; attempting local sratoolkit conversion fallbacks..."
+
+      # Fallback 1: try prefetch + fastq conversion if available
+      if command -v prefetch >/dev/null 2>&1; then
+        echo "[INFO] Trying prefetch for ${sample}..."
+        if prefetch -O "$CACHE" "$sample" 2>&1 | sed -n '1,200p'; then
+          sra_file=$(find "$CACHE" -type f -iname "${sample}*.sra" -o -iname "${sample}*.sralite*" | head -n1 || true)
+          if [ -n "$sra_file" ]; then
+            echo "[INFO] Converting local SRA with fasterq-dump/fastq-dump..."
+            if command -v fasterq-dump >/dev/null 2>&1; then
+              fasterq-dump -O "${RAW_FASTQ_DIR}" "$sra_file" || true
+            fi
+            if command -v fastq-dump >/dev/null 2>&1; then
+              fastq-dump --split-files -O "${RAW_FASTQ_DIR}" "$sra_file" || true
+            fi
+          fi
+        fi
+      fi
+
+      # After fallback attempts, try ENA again (may have been transient)
+      if download_from_ena "$sample"; then
+        echo "[OK] ${sample} downloaded on retry."
+      else
+        echo "[ERROR] ${sample} could not be downloaded by any method. Continuing to next sample."
+      fi
     fi
   done
-
-  echo "Done with SRA downloads. Please check ${RAW_FASTQ_DIR} for FASTQ files."
+  echo "[INFO] SRA download attempts finished. Check ${RAW_FASTQ_DIR} for FASTQ files."
 else
   echo "[INFO] RUN_SRA_DOWNLOAD=false — place FASTQs in: ${RAW_FASTQ_DIR}"
   echo "  Expected files:"
-  echo "    SRR8909403_1.fastq.gz, SRR8909403_2.fastq.gz"
-  echo "    SRR8909404_1.fastq.gz, SRR8909404_2.fastq.gz"
-  echo "    SRR8909405_1.fastq.gz, SRR8909405_2.fastq.gz"
+  echo "    SRR*_1.fastq.gz, SRR*_2.fastq.gz"
   read -r -p "Press Enter to continue..."
 fi
 
@@ -232,38 +319,22 @@ fi
 echo "Downloading reference genome and annotation..."
 
 # Download reference genome FASTA if it doesn't exist
-if [ ! -s "$REFERENCE_FASTA" ]; then
-    echo "Downloading reference genome FASTA (gzipped)..."
-    # download to .gz then gunzip to expected name
-    if wget -q -O "$REFERENCE_FASTA_GZ" "https://ftp.ncbi.nlm.nih.gov/genomes/all/GCF/000/005/845/GCF_000005845.2_ASM584v2/GCF_000005845.2_ASM584v2_genomic.fna.gz"; then
-        echo "Download finished: $REFERENCE_FASTA_GZ"
-        # Try to gunzip the downloaded file (force)
-        if gunzip -f "$REFERENCE_FASTA_GZ"; then
-            echo "Reference FASTA decompressed to $REFERENCE_FASTA"
-        else
-            # If gunzip fails due to suffix issues, still try with zcat
-            if command -v zcat >/dev/null 2>&1; then
-                echo "gunzip failed; trying zcat to create $REFERENCE_FASTA"
-                zcat "$REFERENCE_FASTA_GZ" > "$REFERENCE_FASTA" || true
-                rm -f "$REFERENCE_FASTA_GZ" || true
-            fi
-        fi
-    else
-        echo "WARNING: Failed to download reference FASTA via wget."
-        echo "Please manually add the FASTA file to: $REFERENCE_FASTA"
-        read -p "Press Enter to continue anyway, or Ctrl+C to exit." || true
-    fi
+if [ ! -f "$REFERENCE_FASTA" ]; then
+    echo "Downloading reference genome FASTA..."
+    wget -O "${REFERENCE_DIR}/GCF_000005845.2_genomic.fna.gz" "https://ftp.ncbi.nlm.nih.gov/genomes/all/GCF/000/005/845/GCF_000005845.2_ASM584v2/GCF_000005845.2_ASM584v2_genomic.fna.gz"
+    # Decompress to desired filename
+    gunzip -c "${REFERENCE_DIR}/GCF_000005845.2_genomic.fna.gz" > "$REFERENCE_FASTA" || { echo "WARNING: gunzip failed"; }
+    # Remove gz file to save space
+    rm -f "${REFERENCE_DIR}/GCF_000005845.2_genomic.fna.gz" || true
 
-    # Verify it's a FASTA (starts with >)
-    if [ -s "$REFERENCE_FASTA" ]; then
-        if head -n 1 "$REFERENCE_FASTA" | grep -q '^>'; then
-            echo "Reference genome FASTA downloaded and validated successfully."
-        else
-            echo "WARNING: Reference FASTA does not appear to be a valid FASTA (missing '>')."
-            echo "You may want to check or replace: $REFERENCE_FASTA"
-        fi
+    # Verify the file exists and isn't empty
+    if [ ! -s "$REFERENCE_FASTA" ]; then
+        echo "WARNING: Failed to download FASTA file or file is empty."
+        echo "Please manually add the FASTA file to: $REFERENCE_FASTA"
+        echo "Press Enter to continue anyway, or Ctrl+C to exit."
+        read -p ""
     else
-        echo "WARNING: Reference FASTA missing or empty after download."
+        echo "Reference genome FASTA downloaded successfully."
     fi
 else
     echo "Reference genome FASTA already exists, skipping download."
@@ -360,7 +431,7 @@ done
 
 # Run MultiQC to summarize FastQC results
 echo "Running MultiQC to summarize FastQC results..."
-multiqc "$FASTQC_OUT" -o "$FASTQC_OUT"
+multiqc "$FASTQC_OUT" -o "$FASTQC_OUT" || true
 
 # Check if MultiQC output was created
 if [ -f "${FASTQC_OUT}/multiqc_report.html" ]; then
@@ -377,6 +448,7 @@ fi
 
 echo "=== STEP 2: Cleaning reads with fastp ==="
 
+mkdir -p "$CLEANED_FASTQ_DIR"
 for sample in "${SAMPLES[@]}"; do
     if [ -f "${RAW_FASTQ_DIR}/${sample}_1.fastq.gz" ] && [ -f "${RAW_FASTQ_DIR}/${sample}_2.fastq.gz" ]; then
         echo "Cleaning reads for sample ${sample}..."
