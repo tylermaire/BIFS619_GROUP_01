@@ -92,6 +92,8 @@ Contains analysis scripts used in the pipeline:
   Bash script to run featurecounts on the using the BAM files from 01_allignment and the .GTF file for the reference
 - `generate_top10_heatmap.R`  
   R script in order to generate a heatmap of the top 10 genes reported from featurecount
+- 'products_top_10.sh'
+  Bash script to get a table of what each top 10 GeneID corresponds to which Gene product
 
 
 ### `counts/`
@@ -104,9 +106,14 @@ Contains files related to the annotation and heatmap steps:
   A csv file containing the top 10 expressed genes from the R script 
 - 'top_10_genes_heatmap.png'
   The image of the heatmap generated from the R script
+- 'top_10_genes_products.csv'
+  A csv file showing what each GeneID corresponds to which Gene product for the top 10 genes
 
 #### Example Heatmap Output
 ![Heatmap](counts/top_10_genes_heatmap.png)
+
+#### Example Products Top 10 output
+![Top 10 Genes](counts/top_10_genes_products.csv)
 
 ### `test/`
 (If present) Contains test files or sample data used for validation.
