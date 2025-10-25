@@ -1,133 +1,91 @@
-# 01_alignment
+# BIFS619 Group 01 - Step 01: Read Cleaning, Alignment, and QC
 
-## Getting Started
+## Overview
+This script is the second part of the BIFS619 RNA-Seq analysis workflow. It takes the raw data prepared by the `00_setup_and_qc.sh` script and performs read cleaning, alignment to the reference genome, and generation of summary statistics for both processes.
 
-### 1. Clone the Repository
+This script corresponds to the tasks that generate files for the `01_allignment` directory in the master pipeline.
 
-Open a terminal and run:
+## What this script does:
+1.  **Cleans Raw Reads**: Uses `fastp` to remove low-quality bases and adapter sequences from the raw FASTQ files.
+2.  **Summarizes Cleaning Results**: Runs a Python script to parse the `fastp` output and generate a summary table and a bar plot showing read counts before and after cleaning.
+3.  **Builds Genome Index**: Creates a `HISAT2` index from the reference genome if one does not already exist.
+4.  **Aligns Reads**: Aligns the cleaned reads to the *E. coli* reference genome using `HISAT2`.
+5.  **Processes Alignments**: Converts the SAM alignment files to sorted, indexed BAM files using `samtools`.
+6.  **Summarizes Alignment**: Runs a Python script to parse the `HISAT2` logs and generate a summary table and a bar plot showing the mapping rate for each sample.
 
-```bash
-git clone https://github.com/FaithIgomodu/BIFS619_GROUP_01.git
-cd BIFS619_GROUP_01/01_allignment
+## How to Run
+
+### Prerequisites
+-   A Linux environment (like Ubuntu on WSL).
+-   The output from the `00_setup_and_qc.sh` script must exist in the specified project directory. This includes the raw FASTQ files and the reference genome.
+-   The following tools must be installed: `fastp`, `hisat2`, `samtools`, and `python3` (with `pandas` and `matplotlib` libraries).
+
+### Instructions
+
+1.  **Navigate to the directory containing the script.**
+
+2.  **Make the script executable:**
+    ```bash
+    chmod +x 01_alignment_and_qc.sh
+    ```
+
+3.  **Run the script with the *same* project directory path you used for the previous step:**
+
+    ```bash
+    # Example: Use the 'rnaseq_project' folder created in the first step
+    ./01_alignment_and_qc.sh ~/rnaseq_project
+    ```
+    The script will find the raw data in `~/rnaseq_project/00_rawdata` and place its output in `~/rnaseq_project/01_allignment`.
+
+## Expected Results
+
+The script generates summary tables and plots to assess the quality of the cleaning and alignment steps.
+
+### Read Cleaning Summary
+
+The following table shows the number of reads before and after cleaning with `fastp`. A small percentage of removed reads (1-3%) is typical and indicates successful removal of low-quality data.
+
+| Sample     | Raw Reads | Cleaned Reads | Removed Reads | Removed % |
+| :--------- | :-------- | :------------ | :------------ | :-------- |
+| SRR9613403 | 28299586  | 27784644      | 514942        | 1.82      |
+| SRR9613404 | 22861028  | 22335460      | 525568        | 2.30      |
+| SRR9613405 | 20736074  | 20294582      | 441492        | 2.13      |
+
+This data is visualized in the following chart, which shows the total number of raw reads and the proportion of cleaned reads that are carried forward for alignment.
+
+![Read Counts Before and After Cleaning](image2)
+
+### Alignment Summary
+
+After alignment, the mapping rate indicates how well the cleaned reads matched the reference genome. High mapping rates (>80%) are a good indicator of a successful alignment.
+
+![Mapping Rate by Sample](image1)
+
+## Output Structure
+After running, the script will populate the `01_allignment` directory:
+
+```
+<your_project_directory>/
+└── 01_allignment/
+    ├── QC/
+    │   ├── cleaned_fastq/  # Cleaned FASTQ files from fastp
+    │   ├── plots/
+    │   │   └── pre_post_cleaning_barplot.png
+    │   └── tables/
+    │       └── pre_post_cleaning_table.csv
+    ├── alignment/
+    │   ├── bam/            # Final sorted and indexed BAM files
+    │   ├── hisat2_index/   # Genome index files
+    │   ├── logs/           # HISAT2 log files
+    │   ├── plots/
+    │   │   └── mapping_percent_barplot.png
+    │   └── tables/
+    │       └── alignment_summary.csv
+    └── code/
+        ├── summarize_qc.py
+        └── summarize_alignment.py
 ```
 
-### 2. Install Required Software
-
-Make sure you have the following tools installed on your computer:
-
-- Python 3.x
-- Bash
-- FASTP
-- HISAT2
-
-For Ubuntu/Linux, you can install with:
-
-```bash
-sudo apt update
-sudo apt install python3 fastp hisat2
-```
-
-### 3. Prepare Raw Data
-
-Raw FASTQ files are located in the `../00_raw_data/` directory after cloning the repository.  
-No need to download BAM files—they will be generated automatically in the alignment step.
-
----
-
-### **IMPORTANT: Update File Paths**
-
-Before running any scripts in the `code/` folder, **make sure to update file paths inside each script to match your own computer’s directory structure** (e.g., input/output folders, reference genome locations, etc.).
-
-Open each `.sh` or `.py` file in `01_allignment/code/` and edit any paths as needed.  
-Scripts may use absolute or relative paths—adjust them to match where your files are stored.
-
----
-
-### 4. Run the Workflow
-
-#### a. Quality Control
-
-```bash
-bash code/read_cleaning.sh
-```
-This script will process raw FASTQ files, save cleaned reads and QC outputs to `QC/`.
-
-#### b. Alignment
-
-```bash
-bash code/align_reads.sh
-```
-This will align the cleaned reads and generate BAM files, logs, and metrics in `alignment/`.
-
-#### c. Summarize Results
-
-```bash
-python3 code/summarize_qc.py
-python3 code/summarize_alignment.py
-```
-Check summary tables and plots in `QC/tables/`, `QC/plots/`, `alignment/tables/`, and `alignment/plots/`.
-
----
-
-## For more details on folder contents and outputs, see below.
-
----
-# 01_allignment
-
-This folder contains all files and outputs related to alignment, quality control, and associated analysis scripts for the BIFS619 group project.
-
-## Folder Structure
-
-### `QC/`
-Contains outputs from the quality control step, including:
-- `cleaned_fastq/`  
-  Cleaned FASTQ files and FASTP reports (HTML/JSON) for each sample, generated during sequence quality filtering.
-- `plots/`  
-  Visualization files (see example below) showing metrics such as pre- and post-cleaning read counts.
-- `tables/`  
-  CSV tables summarizing QC metrics, including numbers of reads before and after cleaning for each sample.
-
-#### Example QC Output
-![Pre/Post Cleaning Barplot](QC/plots/pre_post_cleaning_barplot.png)
-
-### `alignment/`
-Contains files related to the alignment step:
-- `hisat2_index/`  
-  HISAT2 index files (`genome.1.ht2` – `genome.8.ht2`) used for mapping reads to the reference genome.
-- `logs/`  
-  Log files and summary reports from HISAT2 alignment runs.
-- `plots/`  
-  Barplots visualizing mapping percentages and read counts per sample post-alignment (see example below).
-- `tables/`  
-  CSV tables reporting alignment metrics for all processed samples.
-- `bam/`  
-  BAM files are generated during the alignment step and stored in this folder. If you wish to use pre-generated BAM files, you can download them from our Google Drive:  
-  [Google Drive - BIFS619 BAM files](https://drive.google.com/drive/folders/1KW6iuHfbfBAplelDN6l0az1ePj9p1X8c?usp=sharing)
-
-#### Example Alignment Output
-![Mapping Percent Barplot](alignment/plots/mapping_percent_barplot.png)
-
-### `code/`
-Contains analysis scripts used in the pipeline:
-- `align_reads.sh`  
-  Bash script to run HISAT2 alignments on all samples.
-- `read_cleaning.sh`  
-  Bash script for performing read cleaning and QC using FASTP.
-- `summarize_alignment.py`  
-  Python script for summarizing alignment metrics and generating tables/plots.
-- `summarize_qc.py`  
-  Python script for parsing QC outputs and producing summary tables/plots.
-
-### `test/`
-(If present) Contains test files or sample data used for validation.
-
-## Notes
-
-- All file and folder names are referenced directly in analysis scripts.
-- For questions or issues, please contact the repository owner or open a GitHub issue.
-- See each subfolder’s README, if present, for more details.
-
----
-
-_Last updated: October 2025_
-
+## Contributors
+-   BIFS619 Group 01 Team Members
+-   Tyler Maire (tylermaire, last updated 2025-10-25)
