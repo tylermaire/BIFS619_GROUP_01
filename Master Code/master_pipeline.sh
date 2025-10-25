@@ -1,8 +1,10 @@
 #!/bin/bash
 # ====================================================================================
 # BIFS619_GROUP_01 RNA-Seq Analysis Master Pipeline
-# Author: Group 01 (Master code complied by Tyler Maire)
+# Author: Group 01 (Master code compiled by Tyler Maire)
 # ====================================================================================
+
+set -euo pipefail
 
 # Fix for Qt/matplotlib issues
 export QT_QPA_PLATFORM=offscreen
@@ -17,76 +19,42 @@ HEATMAP_GENERATED=false
 # ====================================================================================
 # INTRODUCTION AND USAGE INSTRUCTIONS
 # ====================================================================================
-# This script automates the ENTIRE RNA-seq analysis workflow including:
-# - Automatic download of raw data from NCBI SRA
-# - Automatic download of reference genome and annotation
-# - Quality control of raw reads (FastQC/MultiQC)
-# - Read cleaning (fastp)
-# - Reference genome alignment (HISAT2)
-# - Gene expression quantification (featureCounts)
-# - Visualization and analysis of expression data (R)
+# Automates:
+# - SRA downloads (hard-coded SRR IDs)
+# - Reference download
+# - FastQC/MultiQC
+# - fastp cleaning
+# - HISAT2 alignment
+# - featureCounts quant
+# - R heatmap
 #
 # USAGE:
 #   ./master_pipeline.sh <project_directory>
-#
-# EXAMPLE:
-#   ./master_pipeline.sh ~/my_rnaseq_project
-#
-# No additional setup required - script handles everything automatically!
 # ====================================================================================
 
-# Check if project directory was provided
+# --- Required argument ---
 if [ $# -ne 1 ]; then
-    echo "Error: Please provide a project directory path"
-    echo "Usage: ./master_pipeline.sh <project_directory>"
-    exit 1
+  echo "Error: Please provide a project directory path"
+  echo "Usage: $0 <project_directory>"
+  exit 1
 fi
 
-# Create project directory if it doesn't exist
+# --- Core paths and defaults ---
 PROJECT_DIR="$1"
 mkdir -p "$PROJECT_DIR"
 echo "Project will be created in: $PROJECT_DIR"
 BASE_DIR="$PROJECT_DIR"
 
-# Variables to control which steps run
-RUN_SRA_DOWNLOAD=true
-RUN_R_HEATMAP=true
+# ALWAYS download these three SRR runs unless explicitly overridden
+RUN_SRA_DOWNLOAD="${RUN_SRA_DOWNLOAD:-true}"
+SAMPLES=("SRR8909403" "SRR8909404" "SRR8909405")
 
-# Record script execution details
-SCRIPT_VERSION="3.3"
-RUN_DATE=$(date +"%Y-%m-%d %H:%M:%S")
-RUN_USER="tylermaireok"
-
-echo "RNA-Seq Analysis Pipeline v${SCRIPT_VERSION}"
-echo "Started by: ${RUN_USER} on ${RUN_DATE}"
-echo "======================================================================"
-
-# ====================================================================================
-# CREATE DIRECTORY STRUCTURE
-# ====================================================================================
-echo "Creating directory structure..."
-
-# Create standard directory structure
-mkdir -p "${BASE_DIR}/00_rawdata/fastq_data/samples"
-mkdir -p "${BASE_DIR}/00_rawdata/fastq_data/reference"
-mkdir -p "${BASE_DIR}/00_rawdata/fastQC"
-mkdir -p "${BASE_DIR}/01_allignment/QC/cleaned_fastq"
-mkdir -p "${BASE_DIR}/01_allignment/QC/tables"
-mkdir -p "${BASE_DIR}/01_allignment/QC/plots"
-mkdir -p "${BASE_DIR}/01_allignment/alignment/hisat2_index"
-mkdir -p "${BASE_DIR}/01_allignment/alignment/bam"
-mkdir -p "${BASE_DIR}/01_allignment/alignment/logs"
-mkdir -p "${BASE_DIR}/01_allignment/alignment/tables"
-mkdir -p "${BASE_DIR}/01_allignment/alignment/plots"
-mkdir -p "${BASE_DIR}/01_allignment/code"
-mkdir -p "${BASE_DIR}/02_annotation/code"
-mkdir -p "${BASE_DIR}/02_annotation/counts"
-mkdir -p "${BASE_DIR}/02_annotation/plots"
-
-# Define paths for data and outputs
+# Threading + key paths
+THREADS="${THREADS:-8}"
 RAW_FASTQ_DIR="${BASE_DIR}/00_rawdata/fastq_data/samples"
 REFERENCE_DIR="${BASE_DIR}/00_rawdata/fastq_data/reference"
 REFERENCE_FASTA="${REFERENCE_DIR}/GCF_000005845.2.fna"
+REFERENCE_FASTA_GZ="${REFERENCE_FASTA}.gz"
 REFERENCE_GTF="${REFERENCE_DIR}/test.gtf"
 REFERENCE_SAF="${REFERENCE_DIR}/test.saf"
 FASTQC_OUT="${BASE_DIR}/00_rawdata/fastQC"
@@ -102,184 +70,160 @@ COUNTS_DIR="${BASE_DIR}/02_annotation/counts"
 ANNOTATION_PLOTS_DIR="${BASE_DIR}/02_annotation/plots"
 MASTER_QC_DIR="${BASE_DIR}/master_qc_report"
 
-# Sample IDs we're using
-SAMPLES=("SRR9613403" "SRR9613404" "SRR9613405")
-THREADS=8
+RUN_R_HEATMAP="${RUN_R_HEATMAP:-true}"
+SCRIPT_VERSION="3.3"
+RUN_DATE=$(date +"%Y-%m-%d %H:%M:%S")
+RUN_USER="${USER:-tylermaireok}"
+
+echo "RNA-Seq Analysis Pipeline v${SCRIPT_VERSION}"
+echo "Started by: ${RUN_USER} on ${RUN_DATE}"
+echo "======================================================================"
 
 # ====================================================================================
-# CHECK AND INSTALL DEPENDENCIES
+# CREATE DIRECTORY STRUCTURE
+# ====================================================================================
+echo "Creating directory structure..."
+mkdir -p \
+  "${RAW_FASTQ_DIR}" "${REFERENCE_DIR}" "${FASTQC_OUT}" \
+  "${CLEANED_FASTQ_DIR}" "${QC_TABLES_DIR}" "${QC_PLOTS_DIR}" \
+  "${HISAT2_INDEX_DIR}" "${BAM_DIR}" "${ALIGN_LOGS_DIR}" "${ALIGN_TABLES_DIR}" "${ALIGN_PLOTS_DIR}" \
+  "${BASE_DIR}/01_allignment/code" "${BASE_DIR}/02_annotation/code" "${COUNTS_DIR}" "${ANNOTATION_PLOTS_DIR}" \
+  "${MASTER_QC_DIR}"
+
+# ====================================================================================
+# DEPENDENCY CHECKS (minimal, non-intrusive)
 # ====================================================================================
 echo "Checking required software..."
-missing_deps=0
+check_dep() { command -v "$1" >/dev/null 2>&1 && echo "✓ $1 is installed" || { echo "✗ $1 missing"; return 1; }; }
+missing=0
 
-check_dependency() {
-    if command -v $1 >/dev/null 2>&1; then
-        echo "✓ $1 is installed"
-        return 0
-    else
-        echo "✗ $1 is required but not installed"
-        return 1
-    fi
-}
+for bin in fastqc multiqc fastp hisat2 samtools featureCounts wget python3 gzip gunzip; do
+  check_dep "$bin" || missing=1
+done
 
-# Check for conda/mamba first as it's the preferred installation method
-if check_dependency conda; then
-    USE_CONDA=true
-    echo "Conda detected - will use conda for package installation"
-    
-    # Check if mamba is available (faster conda)
-    if check_dependency mamba; then
-        CONDA_CMD="mamba"
-    else
-        CONDA_CMD="conda"
-    fi
+# SRA tools (accept any of these)
+if command -v fasterq-dump >/dev/null 2>&1 || command -v fastq-dump >/dev/null 2>&1 || command -v prefetch >/dev/null 2>&1; then
+  echo "✓ SRA tools are installed"
 else
-    USE_CONDA=false
-    echo "Conda not detected - will use apt for package installation"
+  echo "✗ SRA tools missing (fasterq-dump/fastq-dump/prefetch). SRA download will be skipped."
+  RUN_SRA_DOWNLOAD=false
 fi
 
-# Check all dependencies
-check_dependency fastqc || missing_deps=1
-check_dependency multiqc || missing_deps=1
-check_dependency fastp || missing_deps=1
-check_dependency hisat2 || missing_deps=1
-check_dependency samtools || missing_deps=1
-check_dependency featureCounts || missing_deps=1
-check_dependency wget || missing_deps=1
-check_dependency python3 || missing_deps=1
-
-# Check for SRA tools (multiple possible commands)
-if check_dependency fasterq-dump || check_dependency fastq-dump || check_dependency prefetch; then
-    echo "✓ SRA tools are installed"
+if command -v Rscript >/dev/null 2>&1; then
+  echo "✓ Rscript is installed"
 else
-    echo "✗ SRA tools are required but not installed"
-    missing_deps=1
-    RUN_SRA_DOWNLOAD=false
+  echo "✗ Rscript missing. Heatmap generation will be skipped."
+  RUN_R_HEATMAP=false
 fi
 
-# Check for R
-if check_dependency Rscript; then
-    echo "✓ Rscript is installed"
-else
-    echo "✗ Rscript is required but not installed"
-    missing_deps=1
-    RUN_R_HEATMAP=false
-fi
+[ $missing -eq 1 ] && echo "Some tools are missing. The pipeline will run only the steps that can proceed."
 
-# Check for zlib/gzip
-check_dependency gzip || missing_deps=1
-check_dependency gunzip || missing_deps=1
-
-if [ $missing_deps -eq 1 ]; then
-    echo ""
-    echo "Installing missing dependencies..."
-    
-    if [ "$USE_CONDA" = true ]; then
-        echo "Using conda to install dependencies..."
-        
-        # Create and activate environment
-        $CONDA_CMD create -y -n rnaseq_env
-        eval "$($CONDA_CMD shell.bash hook)"
-        $CONDA_CMD activate rnaseq_env
-        
-        # Install bioinformatics tools
-        $CONDA_CMD install -y -c bioconda \
-            fastqc multiqc fastp hisat2 samtools subread sra-tools \
-            r-base r-dplyr r-pheatmap python pandas matplotlib
-            
-        echo "Conda environment 'rnaseq_env' created with all dependencies."
-        echo "Activate with: conda activate rnaseq_env"
-    else
-        echo "Using apt to install dependencies..."
-        # Try to install packages via apt
-        sudo apt update
-        sudo apt install -y fastqc multiqc
-        sudo apt install -y fastp hisat2 samtools
-        sudo apt install -y subread  # For featureCounts
-        sudo apt install -y sra-toolkit # For SRA tools
-        sudo apt install -y r-base r-base-core # For R
-        sudo apt install -y python3-pip
-        pip3 install --user pandas matplotlib
-        
-        # Try installing R packages if R is now installed
-        if command -v Rscript >/dev/null 2>&1; then
-            echo "Installing R packages..."
-            Rscript -e 'if(!require("dplyr")) install.packages("dplyr", repos="https://cloud.r-project.org")'
-            Rscript -e 'if(!require("pheatmap")) install.packages("pheatmap", repos="https://cloud.r-project.org")'
-        else
-            echo "R installation failed, will skip heatmap generation."
-            RUN_R_HEATMAP=false
-        fi
-    fi
-    
-    # Check again if all dependencies are installed
-    echo "Checking if all dependencies are now installed..."
-    missing_deps=0
-    check_dependency fastqc || missing_deps=1
-    check_dependency multiqc || missing_deps=1
-    check_dependency fastp || missing_deps=1
-    check_dependency hisat2 || missing_deps=1
-    check_dependency samtools || missing_deps=1
-    check_dependency featureCounts || missing_deps=1
-    check_dependency wget || missing_deps=1
-    check_dependency python3 || missing_deps=1
-    
-    # Check SRA tools again
-    if check_dependency fasterq-dump || check_dependency fastq-dump || check_dependency prefetch; then
-        echo "✓ SRA tools are now installed"
-        RUN_SRA_DOWNLOAD=true
-    else
-        echo "✗ SRA tools installation failed"
-        RUN_SRA_DOWNLOAD=false
-    fi
-    
-    # Check R again
-    if check_dependency Rscript; then
-        echo "✓ Rscript is now installed"
-        RUN_R_HEATMAP=true
-    else
-        echo "✗ Rscript installation failed"
-        RUN_R_HEATMAP=false
-    fi
-    
-    if [ $missing_deps -eq 1 ]; then
-        echo "Some dependencies could not be installed automatically."
-        echo "The script will continue but some steps may be skipped."
-    else
-        echo "All dependencies successfully installed!"
-    fi
-fi
-
-# ====================================================================================
-# DOWNLOAD RAW DATA FROM SRA
+## ====================================================================================
+# STEP 0 — SRA DOWNLOAD (robust, multi-fallback)
 # ====================================================================================
 echo "=== STEP 0: Preparing raw data ==="
+mkdir -p "${RAW_FASTQ_DIR}"
+CACHE="${BASE_DIR}/sra_cache"
+mkdir -p "$CACHE"
 
-if [ "$RUN_SRA_DOWNLOAD" = true ]; then
-    echo "Downloading raw data from NCBI SRA..."
-    for sample in "${SAMPLES[@]}"; do
-        echo "Downloading ${sample} from NCBI SRA..."
-        if [ ! -f "${RAW_FASTQ_DIR}/${sample}_1.fastq.gz" ] || [ ! -f "${RAW_FASTQ_DIR}/${sample}_2.fastq.gz" ]; then
-            # Try fasterq-dump first (preferred), fall back to fastq-dump
-            if command -v fasterq-dump >/dev/null 2>&1; then
-                fasterq-dump --split-files --threads "$THREADS" --outdir "${RAW_FASTQ_DIR}" "$sample"
-            else
-                fastq-dump --split-files --outdir "${RAW_FASTQ_DIR}" "$sample"
-            fi
-            
-            # Compress the FASTQ files
-            gzip "${RAW_FASTQ_DIR}/${sample}_1.fastq"
-            gzip "${RAW_FASTQ_DIR}/${sample}_2.fastq"
+# Helper: robust downloader that tries prefetch+fasterq-dump, fasterq-dump directly, then fastq-dump.
+download_sra() {
+  local srr="$1"
+  echo "Downloading ${srr}..."
+
+  # Try prefetch -> fasterq-dump (preferred)
+  if command -v prefetch >/dev/null 2>&1; then
+    echo "[INFO] Using prefetch to fetch ${srr} into cache..."
+    if ! prefetch -O "$CACHE" "$srr"; then
+      echo "[WARN] prefetch failed for ${srr}; will try direct fasterq-dump on accession."
+    else
+      # locate .sra or related file in cache
+      sra_path=$(find "$CACHE" -type f -iname "${srr}*.sra" -print -quit || true)
+      sra_path=${sra_path:-$(find "$CACHE" -type f -iname "${srr}*.sralite*" -print -quit || true)}
+      if [ -n "${sra_path}" ]; then
+        echo "[INFO] Found downloaded SRA file: ${sra_path}"
+        # Prefer fasterq-dump but avoid passing flags that some versions don't accept.
+        if command -v fasterq-dump >/dev/null 2>&1; then
+          # Check whether fasterq-dump supports --split-files (some builds do)
+          if fasterq-dump --help 2>&1 | grep -q -- '--split-files'; then
+            fasterq-dump --split-files -O "$RAW_FASTQ_DIR" --threads "$THREADS" "$sra_path" || fasterq-dump --split-files -O "$RAW_FASTQ_DIR" "$sra_path"
+          else
+            # fallback to minimal invocation (some versions expect simple args)
+            fasterq-dump -O "$RAW_FASTQ_DIR" "$sra_path" || true
+          fi
+        elif command -v fastq-dump >/dev/null 2>&1; then
+          fastq-dump --split-files -O "$RAW_FASTQ_DIR" "$sra_path"
         else
-            echo "FASTQ files for ${sample} already exist, skipping download."
+          echo "[ERROR] No fastq extraction tool available to convert $sra_path"
+          return 1
         fi
-    done
+      else
+        echo "[WARN] prefetch succeeded but .sra file couldn't be located. Trying network fasterq-dump on accession..."
+        # fallthrough to direct network download attempt below
+        :
+      fi
+    fi
+  fi
+
+  # If we reached here, try using fasterq-dump directly on accession (it can download remotely)
+  if command -v fasterq-dump >/dev/null 2>&1; then
+    # Prefer long options if supported, otherwise minimal call
+    if fasterq-dump --help 2>&1 | grep -q -- '--split-files'; then
+      echo "[INFO] Using fasterq-dump (network mode) for ${srr}..."
+      fasterq-dump --split-files -O "$RAW_FASTQ_DIR" --threads "$THREADS" "$srr" || true
+    else
+      echo "[INFO] Using fasterq-dump (minimal args) for ${srr}..."
+      fasterq-dump -O "$RAW_FASTQ_DIR" "$srr" || true
+    fi
+  elif command -v fastq-dump >/dev/null 2>&1; then
+    echo "[INFO] Using fastq-dump for ${srr}..."
+    fastq-dump --split-files -O "$RAW_FASTQ_DIR" "$srr" || true
+  else
+    echo "[ERROR] No SRA fastq extractor available for ${srr}"
+    return 1
+  fi
+
+  # Move any outputs from $HOME or current dir (some versions write there)
+  for f in "${HOME}/${srr}.fastq" "${HOME}/${srr}_1.fastq" "${HOME}/${srr}_2.fastq" \
+           "./${srr}.fastq" "./${srr}_1.fastq" "./${srr}_2.fastq"; do
+    [ -f "$f" ] && mv -f "$f" "${RAW_FASTQ_DIR}/"
+  done
+
+  # gzip any produced .fastq (skip if already gzipped)
+  for f in "${RAW_FASTQ_DIR}/${srr}_1.fastq" "${RAW_FASTQ_DIR}/${srr}_2.fastq" "${RAW_FASTQ_DIR}/${srr}.fastq"; do
+    if [ -f "$f" ]; then
+      gzip -f "$f"
+    fi
+  done
+
+  # Validate at least one pair/fastq present
+  if [ -s "${RAW_FASTQ_DIR}/${srr}_1.fastq.gz" ] || [ -s "${RAW_FASTQ_DIR}/${srr}_2.fastq.gz" ] || [ -s "${RAW_FASTQ_DIR}/${srr}.fastq.gz" ]; then
+    echo "[OK] ${srr} downloaded/converted to FASTQ."
+    return 0
+  else
+    echo "[FAIL] ${srr} FASTQ files missing or empty after attempted download."
+    return 1
+  fi
+}
+
+if [ "${RUN_SRA_DOWNLOAD}" = true ]; then
+  echo "[INFO] Downloading: ${SAMPLES[*]}"
+
+  for sample in "${SAMPLES[@]}"; do
+    echo "----"
+    if ! download_sra "$sample"; then
+      echo "[WARN] Download/conversion failed for ${sample}. Continuing to next sample."
+    fi
+  done
+
+  echo "Done with SRA downloads. Please check ${RAW_FASTQ_DIR} for FASTQ files."
 else
-    echo "SRA download tools not available. Please manually download FASTQ files to:"
-    echo "$RAW_FASTQ_DIR"
-    echo "For each sample, files should be named: <sample_id>_1.fastq.gz and <sample_id>_2.fastq.gz"
-    echo "Press Enter to continue once files are in place, or Ctrl+C to exit."
-    read -p ""
+  echo "[INFO] RUN_SRA_DOWNLOAD=false — place FASTQs in: ${RAW_FASTQ_DIR}"
+  echo "  Expected files:"
+  echo "    SRR8909403_1.fastq.gz, SRR8909403_2.fastq.gz"
+  echo "    SRR8909404_1.fastq.gz, SRR8909404_2.fastq.gz"
+  echo "    SRR8909405_1.fastq.gz, SRR8909405_2.fastq.gz"
+  read -r -p "Press Enter to continue..."
 fi
 
 # ====================================================================================
@@ -288,19 +232,38 @@ fi
 echo "Downloading reference genome and annotation..."
 
 # Download reference genome FASTA if it doesn't exist
-if [ ! -f "$REFERENCE_FASTA" ]; then
-    echo "Downloading reference genome FASTA..."
-    wget -O "$REFERENCE_FASTA" "https://ftp.ncbi.nlm.nih.gov/genomes/all/GCF/000/005/845/GCF_000005845.2_ASM584v2/GCF_000005845.2_ASM584v2_genomic.fna.gz"
-    gunzip "$REFERENCE_FASTA"
-    
-    # Verify the file exists and isn't empty
-    if [ ! -s "$REFERENCE_FASTA" ]; then
-        echo "WARNING: Failed to download FASTA file or file is empty."
-        echo "Please manually add the FASTA file to: $REFERENCE_FASTA"
-        echo "Press Enter to continue anyway, or Ctrl+C to exit."
-        read -p ""
+if [ ! -s "$REFERENCE_FASTA" ]; then
+    echo "Downloading reference genome FASTA (gzipped)..."
+    # download to .gz then gunzip to expected name
+    if wget -q -O "$REFERENCE_FASTA_GZ" "https://ftp.ncbi.nlm.nih.gov/genomes/all/GCF/000/005/845/GCF_000005845.2_ASM584v2/GCF_000005845.2_ASM584v2_genomic.fna.gz"; then
+        echo "Download finished: $REFERENCE_FASTA_GZ"
+        # Try to gunzip the downloaded file (force)
+        if gunzip -f "$REFERENCE_FASTA_GZ"; then
+            echo "Reference FASTA decompressed to $REFERENCE_FASTA"
+        else
+            # If gunzip fails due to suffix issues, still try with zcat
+            if command -v zcat >/dev/null 2>&1; then
+                echo "gunzip failed; trying zcat to create $REFERENCE_FASTA"
+                zcat "$REFERENCE_FASTA_GZ" > "$REFERENCE_FASTA" || true
+                rm -f "$REFERENCE_FASTA_GZ" || true
+            fi
+        fi
     else
-        echo "Reference genome FASTA downloaded successfully."
+        echo "WARNING: Failed to download reference FASTA via wget."
+        echo "Please manually add the FASTA file to: $REFERENCE_FASTA"
+        read -p "Press Enter to continue anyway, or Ctrl+C to exit." || true
+    fi
+
+    # Verify it's a FASTA (starts with >)
+    if [ -s "$REFERENCE_FASTA" ]; then
+        if head -n 1 "$REFERENCE_FASTA" | grep -q '^>'; then
+            echo "Reference genome FASTA downloaded and validated successfully."
+        else
+            echo "WARNING: Reference FASTA does not appear to be a valid FASTA (missing '>')."
+            echo "You may want to check or replace: $REFERENCE_FASTA"
+        fi
+    else
+        echo "WARNING: Reference FASTA missing or empty after download."
     fi
 else
     echo "Reference genome FASTA already exists, skipping download."
@@ -438,7 +401,7 @@ for sample in "${SAMPLES[@]}"; do
 done
 
 # Check if all samples were cleaned
-cleaned_count=$(ls -1 ${CLEANED_FASTQ_DIR}/*.clean.fastq.gz 2>/dev/null | wc -l)
+cleaned_count=$(ls -1 ${CLEANED_FASTQ_DIR}/*.clean.fastq.gz 2>/dev/null | wc -l || echo 0)
 if [ "$cleaned_count" -ge "$(( ${#SAMPLES[@]} * 2 ))" ]; then
     echo "All samples were cleaned successfully."
     CLEANING_COMPLETE=true
@@ -602,7 +565,7 @@ else
         done
         
         # Check if all samples were aligned
-        aligned_count=$(ls -1 ${BAM_DIR}/*.bam 2>/dev/null | wc -l)
+        aligned_count=$(ls -1 ${BAM_DIR}/*.bam 2>/dev/null | wc -l || echo 0)
         if [ "$aligned_count" -eq "${#SAMPLES[@]}" ]; then
             echo "All samples were aligned successfully."
             ALIGNMENT_COMPLETE=true
@@ -964,7 +927,7 @@ multiqc -f -o "$MASTER_QC_DIR" \
     "$FASTQC_OUT" \
     "${BASE_DIR}/01_allignment/QC" \
     "${BASE_DIR}/01_allignment/alignment" \
-    "$COUNTS_DIR"
+    "$COUNTS_DIR" || true
 
 # Check if master QC report was created
 if [ -f "${MASTER_QC_DIR}/multiqc_report.html" ]; then
@@ -1029,3 +992,4 @@ echo "Pipeline completed on: $(date)"
 echo "Pipeline run by: ${RUN_USER}"
 echo "Pipeline version: ${SCRIPT_VERSION}"
 echo "======================================================================"
+SAMPLES=("SRR8909403" "SRR8909404" "SRR8909405")
