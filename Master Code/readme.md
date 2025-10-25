@@ -10,6 +10,18 @@ The repository is organized as follows:
 - `02_annotation`: Contains annotation files and processes (Note: This directory is for reference; the pipeline creates its own structure).
 - `Master Code`: Contains the main pipeline script (`master_pipeline.sh`) for the project workflow.
 
+## Dataset and Study Information
+This pipeline analyzes RNA-Seq data for *Escherichia coli*. The reference genome is *E. coli* K-12 (ASM584v2), and the raw sequencing data is taken from the following study:
+
+-   O'Rourke, A., Beyhan, S., Choi, Y., Morales, P., Chan, A. P., Espinoza, J. L., Dupont, C. L., Meyer, K. J., Spoering, A., Lewis, K., Nierman, W. C., & Nelson, K. E. (2020). Mechanism-of-Action Classification of Antibiotics by Global Transcriptome Profiling. *Antimicrobial agents and chemotherapy*, 64(3), e01207-19. https://doi.org/10.1128/AAC.01207-19
+
+The specific samples from this study referenced for this project are:
+-   `SRR9613401`
+-   `SRR9613402`
+-   `SRR9613403`
+
+**Note:** The `master_pipeline.sh` script is currently configured to run a different default set of samples for demonstration purposes. To analyze the samples listed above, you will need to modify the `SAMPLES` variable within the script.
+
 ## How to Run the Master Code
 
 ### Prerequisites
