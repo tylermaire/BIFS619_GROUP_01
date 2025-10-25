@@ -1,7 +1,7 @@
 #!/bin/bash
 # ====================================================================================
 # BIFS619_GROUP_01 RNA-Seq Analysis Master Pipeline
-# Author: Group 01 (Master code complied by Tyler Maire)
+# Author: Group 01 (Master code compiled by Tyler Maire)
 # ====================================================================================
 
 # Fix for Qt/matplotlib issues
@@ -53,9 +53,9 @@ RUN_SRA_DOWNLOAD=true
 RUN_R_HEATMAP=true
 
 # Record script execution details
-SCRIPT_VERSION="3.3"
+SCRIPT_VERSION="4.0"
 RUN_DATE=$(date +"%Y-%m-%d %H:%M:%S")
-RUN_USER="tylermaireok"
+RUN_USER="tylermaire"
 
 echo "RNA-Seq Analysis Pipeline v${SCRIPT_VERSION}"
 echo "Started by: ${RUN_USER} on ${RUN_DATE}"
@@ -87,8 +87,7 @@ mkdir -p "${BASE_DIR}/02_annotation/plots"
 RAW_FASTQ_DIR="${BASE_DIR}/00_rawdata/fastq_data/samples"
 REFERENCE_DIR="${BASE_DIR}/00_rawdata/fastq_data/reference"
 REFERENCE_FASTA="${REFERENCE_DIR}/GCF_000005845.2.fna"
-REFERENCE_GTF="${REFERENCE_DIR}/test.gtf"
-REFERENCE_SAF="${REFERENCE_DIR}/test.saf"
+REFERENCE_GFF="${REFERENCE_DIR}/GCF_000005845.2.gff"
 FASTQC_OUT="${BASE_DIR}/00_rawdata/fastQC"
 CLEANED_FASTQ_DIR="${BASE_DIR}/01_allignment/QC/cleaned_fastq"
 QC_TABLES_DIR="${BASE_DIR}/01_allignment/QC/tables"
@@ -275,93 +274,47 @@ fi
 # ====================================================================================
 # DOWNLOAD REFERENCE GENOME AND ANNOTATION
 # ====================================================================================
-echo "Downloading reference genome and annotation..."
+echo "=== Downloading reference genome and annotation ==="
 
 # Download reference genome FASTA if it doesn't exist
 if [ ! -f "$REFERENCE_FASTA" ]; then
     echo "Downloading reference genome FASTA..."
-    # The user confirmed this is the correct URL
     wget -O "${REFERENCE_FASTA}.gz" "https://ftp.ncbi.nlm.nih.gov/genomes/all/GCF/000/005/845/GCF_000005845.2_ASM584v2/GCF_000005845.2_ASM584v2_genomic.fna.gz"
     gunzip "${REFERENCE_FASTA}.gz"
     
     # Verify the file exists and isn't empty
     if [ ! -s "$REFERENCE_FASTA" ]; then
-        echo "WARNING: Failed to download FASTA file or file is empty."
+        echo "ERROR: Failed to download FASTA file or file is empty."
         echo "Please manually add the FASTA file to: $REFERENCE_FASTA"
-        echo "Press Enter to continue anyway, or Ctrl+C to exit."
-        read -p ""
+        exit 1
     else
-        echo "Reference genome FASTA downloaded successfully."
+        echo "✓ Reference genome FASTA downloaded successfully."
     fi
 else
-    echo "Reference genome FASTA already exists, skipping download."
+    echo "✓ Reference genome FASTA already exists, skipping download."
 fi
 
-# Create a minimal GTF file for featureCounts (we confirmed this works)
-echo "Creating a minimal GTF annotation file..."
-cat > "$REFERENCE_GTF" << 'EOL'
-NZ_CP076404.1   RefSeq  exon    258 1154    .   +   .   gene_id "gene1"; gene_name "dnaA";
-NZ_CP076404.1   RefSeq  exon    1165    2289    .   +   .   gene_id "gene2"; gene_name "dnaN";
-NZ_CP076404.1   RefSeq  exon    2293    3321    .   +   .   gene_id "gene3"; gene_name "gyrB";
-NZ_CP076404.1   RefSeq  exon    3318    5069    .   +   .   gene_id "gene4"; gene_name "recF";
-NZ_CP076404.1   RefSeq  exon    5100    5843    .   +   .   gene_id "gene5"; gene_name "gyrA";
-NZ_CP076404.1   RefSeq  exon    5843    6673    .   +   .   gene_id "gene6"; gene_name "serS";
-NZ_CP076404.1   RefSeq  exon    6689    9781    .   +   .   gene_id "gene7"; gene_name "rpoD";
-NZ_CP076404.1   RefSeq  exon    9794    10897   .   +   .   gene_id "gene8"; gene_name "dnaG";
-NZ_CP076404.1   RefSeq  exon    10903   13119   .   +   .   gene_id "gene9"; gene_name "rpoC";
-NZ_CP076404.1   RefSeq  exon    13116   17204   .   +   .   gene_id "gene10"; gene_name "rpoB";
-EOL
-
-# Verify GTF file was created
-if [ ! -s "$REFERENCE_GTF" ]; then
-    echo "WARNING: GTF file creation failed or file is empty."
-    echo "Creating GTF file again with verified method..."
-    printf "NZ_CP076404.1\tRefSeq\texon\t258\t1154\t.\t+\t.\tgene_id \"gene1\"; gene_name \"dnaA\";\n" > "$REFERENCE_GTF"
-    printf "NZ_CP076404.1\tRefSeq\texon\t1165\t2289\t.\t+\t.\tgene_id \"gene2\"; gene_name \"dnaN\";\n" >> "$REFERENCE_GTF"
-    printf "NZ_CP076404.1\tRefSeq\texon\t2293\t3321\t.\t+\t.\tgene_id \"gene3\"; gene_name \"gyrB\";\n" >> "$REFERENCE_GTF"
-    printf "NZ_CP076404.1\tRefSeq\texon\t3318\t5069\t.\t+\t.\tgene_id \"gene4\"; gene_name \"recF\";\n" >> "$REFERENCE_GTF"
-    printf "NZ_CP076404.1\tRefSeq\texon\t5100\t5843\t.\t+\t.\tgene_id \"gene5\"; gene_name \"gyrA\";\n" >> "$REFERENCE_GTF"
-fi
-
-# Create a SAF format file as backup (we confirmed this works too)
-echo "Creating a SAF format annotation file as backup..."
-cat > "$REFERENCE_SAF" << 'EOL'
-GeneID  Chr Start   End Strand
-gene1   NZ_CP076404.1   258 1154    +
-gene2   NZ_CP076404.1   1165    2289    +
-gene3   NZ_CP076404.1   2293    3321    +
-gene4   NZ_CP076404.1   3318    5069    +
-gene5   NZ_CP076404.1   5100    5843    +
-gene6   NZ_CP076404.1   5843    6673    +
-gene7   NZ_CP076404.1   6689    9781    +
-gene8   NZ_CP076404.1   9794    10897   +
-gene9   NZ_CP076404.1   10903   13119   +
-gene10  NZ_CP076404.1   13116   17204   +
-EOL
-
-# Verify SAF file was created
-if [ ! -s "$REFERENCE_SAF" ]; then
-    echo "WARNING: SAF file creation failed or file is empty."
-    echo "Creating SAF file again with verified method..."
-    printf "GeneID\tChr\tStart\tEnd\tStrand\n" > "$REFERENCE_SAF"
-    printf "gene1\tNZ_CP076404.1\t258\t1154\t+\n" >> "$REFERENCE_SAF"
-    printf "gene2\tNZ_CP076404.1\t1165\t2289\t+\n" >> "$REFERENCE_SAF"
-    printf "gene3\tNZ_CP076404.1\t2293\t3321\t+\n" >> "$REFERENCE_SAF"
-    printf "gene4\tNZ_CP076404.1\t3318\t5069\t+\n" >> "$REFERENCE_SAF"
-    printf "gene5\tNZ_CP076404.1\t5100\t5843\t+\n" >> "$REFERENCE_SAF"
-fi
-
-# Verify annotation files exist
-if [ -s "$REFERENCE_GTF" ]; then
-    echo "GTF file created successfully: $(wc -l < "$REFERENCE_GTF") lines"
+# Download full annotation file (GFF format) if it doesn't exist
+if [ ! -f "$REFERENCE_GFF" ]; then
+    echo "Downloading full genome annotation (GFF format)..."
+    wget -O "${REFERENCE_GFF}.gz" "https://ftp.ncbi.nlm.nih.gov/genomes/all/GCF/000/005/845/GCF_000005845.2_ASM584v2/GCF_000005845.2_ASM584v2_genomic.gff.gz"
+    gunzip "${REFERENCE_GFF}.gz"
+    
+    # Verify the file exists and isn't empty
+    if [ ! -s "$REFERENCE_GFF" ]; then
+        echo "ERROR: Failed to download GFF file or file is empty."
+        echo "Please manually add the GFF file to: $REFERENCE_GFF"
+        exit 1
+    else
+        # Count genes in the annotation
+        gene_count=$(grep -c "gene" "$REFERENCE_GFF" || echo "0")
+        echo "✓ Full genome annotation downloaded successfully."
+        echo "  Found approximately $gene_count gene annotations."
+    fi
 else
-    echo "ERROR: Failed to create GTF file."
-fi
-
-if [ -s "$REFERENCE_SAF" ]; then
-    echo "SAF file created successfully: $(wc -l < "$REFERENCE_SAF") lines"
-else
-    echo "ERROR: Failed to create SAF file."
+    gene_count=$(grep -c "gene" "$REFERENCE_GFF" || echo "0")
+    echo "✓ Genome annotation already exists, skipping download."
+    echo "  Annotation contains approximately $gene_count gene annotations."
 fi
 
 # ====================================================================================
@@ -704,79 +657,38 @@ fi
 
 echo "=== STEP 6: Quantifying gene expression with featureCounts ==="
 
-# Check if alignment was successful
-if [ "$ALIGNMENT_COMPLETE" = true ]; then
-    echo "Starting gene expression quantification..."
+# Check if alignment was successful and annotation file exists
+if [ "$ALIGNMENT_COMPLETE" = true ] && [ -s "$REFERENCE_GFF" ]; then
+    echo "Starting gene expression quantification with full genome annotation..."
+    echo "Using annotation file: $REFERENCE_GFF"
     
-    # Debug: Print file contents to verify they're correct
-    echo "Verifying annotation files before running featureCounts:"
-    echo "GTF file (first 3 lines):"
-    head -n 3 "$REFERENCE_GTF"
-    echo "SAF file (first 3 lines):"
-    head -n 3 "$REFERENCE_SAF"
-    
-    # Try GTF approach first (confirmed working)
-    echo "Running featureCounts with GTF annotation..."
+    # Run featureCounts with GFF file
     featureCounts \
-      -a "$REFERENCE_GTF" \
+      -a "$REFERENCE_GFF" \
       -o "${COUNTS_DIR}/raw_counts.txt" \
-      -t exon \
-      -g gene_id \
+      -t gene \
+      -g ID \
       -p \
       -T "$THREADS" \
       ${BAM_DIR}/*.bam
       
     # Check if counts were generated
     if [ -s "${COUNTS_DIR}/raw_counts.txt" ]; then
-        echo "FeatureCounts completed successfully with GTF."
+        # Count how many genes were quantified
+        gene_count=$(tail -n +3 "${COUNTS_DIR}/raw_counts.txt" | wc -l)
+        echo "✓ FeatureCounts completed successfully."
+        echo "  Quantified $gene_count genes across ${#SAMPLES[@]} samples."
         COUNTS_GENERATED=true
     else
-        echo "WARNING: featureCounts failed with GTF, trying SAF format..."
-        
-        # Try with SAF format (also confirmed working)
-        featureCounts \
-          -a "$REFERENCE_SAF" \
-          -F SAF \
-          -o "${COUNTS_DIR}/raw_counts.txt" \
-          -p \
-          -T "$THREADS" \
-          ${BAM_DIR}/*.bam
-        
-        # Check again
-        if [ -s "${COUNTS_DIR}/raw_counts.txt" ]; then
-            echo "FeatureCounts completed successfully with SAF format."
-            COUNTS_GENERATED=true
-        else
-            echo "WARNING: FeatureCounts with automatic approaches failed. Trying direct file creation..."
-            
-            # Last resort - create the GTF file directly in a more controlled way
-            GTF_TEMP="${REFERENCE_DIR}/direct.gtf"
-            echo -e "NZ_CP076404.1\tRefSeq\texon\t258\t1154\t.\t+\t.\tgene_id \"gene1\"; gene_name \"dnaA\";" > "$GTF_TEMP"
-            echo -e "NZ_CP076404.1\tRefSeq\texon\t1165\t2289\t.\t+\t.\tgene_id \"gene2\"; gene_name \"dnaN\";" >> "$GTF_TEMP"
-            echo -e "NZ_CP076404.1\tRefSeq\texon\t2293\t3321\t.\t+\t.\tgene_id \"gene3\"; gene_name \"gyrB\";" >> "$GTF_TEMP"
-            echo -e "NZ_CP076404.1\tRefSeq\texon\t3318\t5069\t.\t+\t.\tgene_id \"gene4\"; gene_name \"recF\";" >> "$GTF_TEMP"
-            echo -e "NZ_CP076404.1\tRefSeq\texon\t5100\t5843\t.\t+\t.\tgene_id \"gene5\"; gene_name \"gyrA\";" >> "$GTF_TEMP"
-            
-            featureCounts \
-              -a "$GTF_TEMP" \
-              -o "${COUNTS_DIR}/raw_counts.txt" \
-              -t exon \
-              -g gene_id \
-              -p \
-              -T "$THREADS" \
-              ${BAM_DIR}/*.bam
-              
-            if [ -s "${COUNTS_DIR}/raw_counts.txt" ]; then
-                echo "FeatureCounts succeeded with direct GTF creation."
-                COUNTS_GENERATED=true
-            else
-                echo "WARNING: All featureCounts attempts failed."
-                COUNTS_GENERATED=false
-            fi
-        fi
+        echo "ERROR: FeatureCounts failed to generate count data."
+        COUNTS_GENERATED=false
     fi
 else
-    echo "Skipping quantification as alignment was not completed successfully."
+    if [ "$ALIGNMENT_COMPLETE" != true ]; then
+        echo "Skipping quantification as alignment was not completed successfully."
+    else
+        echo "ERROR: Annotation file not found at: $REFERENCE_GFF"
+    fi
     COUNTS_GENERATED=false
 fi
 
@@ -788,7 +700,7 @@ echo "=== STEP 7: Generating expression heatmap ==="
 
 # Check if R is installed and counts were generated
 if [ "$RUN_R_HEATMAP" = true ] && [ "$COUNTS_GENERATED" = true ]; then
-    # Create R script for generating heatmap
+    # Create R script for generating heatmap with gene name mapping
     cat << 'EOL' > "${BASE_DIR}/02_annotation/code/generate_top10_heatmap.R"
 #!/usr/bin/env Rscript
 
@@ -797,6 +709,11 @@ args <- commandArgs(trailingOnly = TRUE)
 counts_file <- args[1]
 output_heatmap <- args[2]
 output_table <- args[3]
+gff_file <- args[4]
+
+cat("=== R Heatmap Generation ===\n")
+cat("Counts file:", counts_file, "\n")
+cat("GFF file:", gff_file, "\n")
 
 # Create directories for outputs
 dir.create(dirname(output_heatmap), recursive = TRUE, showWarnings = FALSE)
@@ -814,19 +731,61 @@ safe_library <- function(package_name) {
   return(TRUE)
 }
 
-# Try to load required libraries
+# Load required libraries
 dplyr_loaded <- safe_library("dplyr")
 pheatmap_loaded <- safe_library("pheatmap")
 
-# Exit if libraries aren't available
 if (!dplyr_loaded || !pheatmap_loaded) {
   cat("Required R packages could not be loaded. Exiting.\n")
   quit(status = 1)
 }
 
-# Try to load raw counts
+# Function to extract gene names from GFF
+extract_gene_names <- function(gff_file) {
+  cat("\nExtracting gene names from GFF file...\n")
+  if (!file.exists(gff_file)) {
+    cat("GFF file not found. Using gene IDs as names.\n")
+    return(NULL)
+  }
+  
+  gff_lines <- readLines(gff_file)
+  gene_map <- data.frame(gene_id = character(), gene_name = character(), stringsAsFactors = FALSE)
+  
+  for (line in gff_lines) {
+    # Skip comment lines
+    if (grepl("^#", line)) next
+    
+    # Look for gene features
+    if (grepl("\tgene\t", line)) {
+      # Extract ID (gene_id)
+      id_match <- regmatches(line, regexpr('ID=[^;]+', line))
+      if (length(id_match) > 0) {
+        gene_id <- gsub('ID=', '', id_match)
+        
+        # Try to extract Name attribute (gene name)
+        name_match <- regmatches(line, regexpr('Name=[^;]+', line))
+        gene_name <- if (length(name_match) > 0) {
+          gsub('Name=', '', name_match)
+        } else {
+          gene_id  # Use ID if no Name
+        }
+        
+        if (!gene_id %in% gene_map$gene_id) {
+          gene_map <- rbind(gene_map, data.frame(gene_id = gene_id, gene_name = gene_name, stringsAsFactors = FALSE))
+        }
+      }
+    }
+  }
+  
+  cat("Found", nrow(gene_map), "genes in GFF file\n")
+  return(gene_map)
+}
+
+# Load raw counts
 counts_loaded <- tryCatch({
   counts <- read.delim(counts_file, comment.char = "#")
+  cat("✓ Counts file loaded successfully\n")
+  cat("Dimensions:", nrow(counts), "genes x", ncol(counts), "columns\n")
   TRUE
 }, error = function(e) {
   cat(paste("Error loading counts file:", e$message, "\n"))
@@ -834,81 +793,97 @@ counts_loaded <- tryCatch({
 })
 
 if (!counts_loaded) {
-  cat("Could not load counts file. Exiting.\n")
   quit(status = 1)
 }
 
-# Safety check for empty or invalid data
 if (nrow(counts) == 0 || ncol(counts) <= 1) {
   cat("Counts file appears to be empty or invalid. Exiting.\n")
   quit(status = 1)
 }
 
 tryCatch({
-  # Get count columns (all numeric columns except the first)
+  # Load gene name mapping from GFF
+  gene_map <- extract_gene_names(gff_file)
+  
+  # Get count columns (skip first 6 metadata columns from featureCounts)
   count_cols <- 7:ncol(counts)
-  if (length(count_cols) == 0) {
-    cat("Could not identify count columns. Using all columns except first.\n")
-    count_cols <- 2:ncol(counts)
-  }
-  
-  # Exclude first column (Geneid) from count_cols if it's included
-  if (1 %in% count_cols) {
-    count_cols <- count_cols[count_cols != 1]
-  }
-  
   count_data <- counts[, count_cols, drop = FALSE]
   
-  # Rename columns for simplicity by removing file paths
-  samples <- gsub(".*\\/([^/]+)\\.bam", "\\1", colnames(count_data))
+  # Extract sample names from BAM file paths
+  cat("\nExtracting sample names...\n")
+  samples <- gsub(".*/(SRR[0-9]+)\\.bam", "\\1", colnames(count_data))
   colnames(count_data) <- samples
   
-  # Keep gene IDs separately
+  # Keep gene IDs
   gene_ids <- counts$Geneid
   
-  # Total counts per sample
+  # CPM normalization
+  cat("\nPerforming CPM normalization...\n")
   total_counts <- colSums(count_data)
-  
-  # Safety check for zero total counts
   if (any(total_counts == 0)) {
-    cat("Warning: Some samples have zero total counts. Using pseudocount for normalization.\n")
+    cat("Warning: Some samples have zero total counts. Using pseudocount.\n")
     total_counts[total_counts == 0] <- 1
   }
   
-  # CPM normalization
   cpm_data <- sweep(count_data, 2, total_counts, FUN=function(x, y) (x / y) * 1e6)
-  cpm_data <- data.frame(Geneid = gene_ids, cpm_data)
+  cpm_data <- data.frame(Geneid = gene_ids, cpm_data, stringsAsFactors = FALSE)
+  
+  # Map gene IDs to gene names
+  cat("\nMapping gene IDs to gene names...\n")
+  if (!is.null(gene_map)) {
+    cpm_data <- merge(gene_map, cpm_data, by.x = "gene_id", by.y = "Geneid", all.y = TRUE)
+    cpm_data$gene_name[is.na(cpm_data$gene_name)] <- cpm_data$gene_id[is.na(cpm_data$gene_name)]
+  } else {
+    cpm_data$gene_name <- cpm_data$Geneid
+    cpm_data$gene_id <- cpm_data$Geneid
+  }
   
   # Identify top 10 genes by mean CPM
+  cat("\nIdentifying top 10 expressed genes...\n")
   top_genes <- cpm_data %>%
-    mutate(mean_cpm = rowMeans(select(., -Geneid))) %>%
+    mutate(mean_cpm = rowMeans(select(., starts_with("SRR")))) %>%
     arrange(desc(mean_cpm)) %>%
     head(10)
   
-  # Extract just the gene ID and numerical columns for heatmap
-  heatmap_data <- top_genes %>% select(-mean_cpm)
-  rownames(heatmap_data) <- heatmap_data$Geneid
-  heatmap_data$Geneid <- NULL
+  cat("Top 10 genes:\n")
+  print(top_genes %>% select(gene_id, gene_name, mean_cpm))
   
-  # Save top genes table
-  write.csv(top_genes, file = output_table, row.names = FALSE)
+  # Create table for output
+  top_genes_output <- top_genes %>%
+    select(gene_id, gene_name, everything())
+  
+  # Extract numerical columns for heatmap with gene names as row names
+  heatmap_data <- top_genes %>% 
+    select(starts_with("SRR"))
+  rownames(heatmap_data) <- top_genes$gene_name
+  
+  cat("\nHeatmap structure:\n")
+  cat("Row names (genes):", paste(rownames(heatmap_data), collapse = ", "), "\n")
+  cat("Column names (samples):", paste(colnames(heatmap_data), collapse = ", "), "\n")
+  
+  # Save table
+  write.csv(top_genes_output, file = output_table, row.names = FALSE)
+  cat("✓ Table saved to:", output_table, "\n")
   
   # Create heatmap
-  pdf(output_heatmap, width = 8, height = 6)
+  cat("\nGenerating heatmap...\n")
+  pdf(output_heatmap, width = 10, height = 8)
   pheatmap(log2(heatmap_data + 1),
-           main = "Top 10 Expressed Genes",
+           main = "Top 10 Expressed Genes (CPM, log2 scale)",
            cluster_rows = TRUE,
            cluster_cols = TRUE,
-           fontsize_row = 8,
-           fontsize_col = 10,
-           scale = "row")
+           fontsize_row = 10,
+           fontsize_col = 12,
+           scale = "row",
+           color = colorRampPalette(c("navy", "white", "firebrick3"))(50),
+           border_color = "grey60")
   dev.off()
+  cat("✓ Heatmap saved to:", output_heatmap, "\n")
   
-  cat("Analysis complete!\n")
-  cat("Top 10 genes table saved to:", output_table, "\n")
-  cat("Heatmap saved to:", output_heatmap, "\n")
+  cat("\n=== Analysis complete! ===\n")
 }, error = function(e) {
-  cat(paste("Error in R analysis:", e$message, "\n"))
+  cat(paste("\nERROR:", e$message, "\n"))
+  traceback()
   quit(status = 1)
 })
 EOL
@@ -918,11 +893,12 @@ EOL
     Rscript "${BASE_DIR}/02_annotation/code/generate_top10_heatmap.R" \
       "${COUNTS_DIR}/raw_counts.txt" \
       "${ANNOTATION_PLOTS_DIR}/top10_genes_heatmap.pdf" \
-      "${ANNOTATION_PLOTS_DIR}/top10_genes_table.csv"
+      "${ANNOTATION_PLOTS_DIR}/top10_genes_table.csv" \
+      "$REFERENCE_GFF"
     
     # Check if outputs were created
     if [ -f "${ANNOTATION_PLOTS_DIR}/top10_genes_heatmap.pdf" ] && [ -f "${ANNOTATION_PLOTS_DIR}/top10_genes_table.csv" ]; then
-        echo "Heatmap and top genes table generated successfully."
+        echo "✓ Heatmap and top genes table generated successfully."
         HEATMAP_GENERATED=true
     else
         echo "WARNING: Heatmap generation may have failed."
@@ -931,58 +907,17 @@ EOL
 else
     if [ "$RUN_R_HEATMAP" != true ]; then
         echo "Skipping heatmap generation as R is not installed."
-        echo "To enable this step, install R with: sudo apt install -y r-base r-base-core"
-        echo "Then install required packages with: sudo Rscript -e 'install.packages(c(\"dplyr\", \"pheatmap\"), repos=\"https://cloud.r-project.org\")'"
     elif [ "$COUNTS_GENERATED" != true ]; then
         echo "Skipping heatmap generation as count data was not generated."
     fi
-    echo "Raw counts are available at: ${COUNTS_DIR}/raw_counts.txt"
     HEATMAP_GENERATED=false
 fi
 
 # ====================================================================================
-# STEP 8: MAP TOP 10 GENES TO PRODUCTS (TABLE FOR TABLET)
+# STEP 8: GENERATE MASTER QC REPORT
 # ====================================================================================
 
-echo "=== STEP 8: Mapping top 10 genes to their products ==="
-
-if [ "$HEATMAP_GENERATED" = true ]; then
-    # Input/output paths
-    TOP10_CSV="${ANNOTATION_PLOTS_DIR}/top10_genes_table.csv"
-    PRODUCTS_OUTPUT="${COUNTS_DIR}/top10_genes_products.csv"
-    
-    # Make sure GTF file exists
-    if [ ! -f "${REFERENCE_GTF}" ]; then
-        echo "ERROR: Reference GTF not found at ${REFERENCE_GTF}. Cannot map gene products."
-    else
-        # Prepare output CSV with header
-        echo "Geneid,Product" > "$PRODUCTS_OUTPUT"
-        
-        # Extract products for top 10 genes
-        # Use awk to handle potential commas in gene names and ensure correct field extraction
-        tail -n +2 "$TOP10_CSV" | cut -d',' -f1 | while read -r gene; do
-            # Find the gene_name associated with the gene_id in the GTF file
-            product=$(grep "gene_id \"$gene\"" "$REFERENCE_GTF" | sed -n 's/.*gene_name "\([^"]*\)".*/\1/p' | head -n 1)
-            
-            # If product is empty, provide a default value
-            if [ -z "$product" ]; then
-                product="N/A"
-            fi
-            
-            echo "$gene,$product" >> "$PRODUCTS_OUTPUT"
-        done
-        
-        echo "Top 10 genes products table created at: $PRODUCTS_OUTPUT"
-    fi
-else
-    echo "Skipping gene product mapping as the top 10 genes table was not generated."
-fi
-
-# ====================================================================================
-# STEP 9: GENERATE MASTER QC REPORT
-# ====================================================================================
-
-echo "=== STEP 9: Generating master QC report ==="
+echo "=== STEP 8: Generating master QC report ==="
 
 # Create a directory for the master QC report
 mkdir -p "$MASTER_QC_DIR"
@@ -997,8 +932,8 @@ multiqc -f -o "$MASTER_QC_DIR" \
 
 # Check if master QC report was created
 if [ -f "${MASTER_QC_DIR}/multiqc_report.html" ]; then
-    echo "Master QC report generated successfully."
-    echo "Master QC report: ${MASTER_QC_DIR}/multiqc_report.html"
+    echo "✓ Master QC report generated successfully."
+    echo "  Report: ${MASTER_QC_DIR}/multiqc_report.html"
 else
     echo "WARNING: Master QC report generation may have failed."
 fi
@@ -1044,7 +979,6 @@ fi
 
 if [ "$HEATMAP_GENERATED" = true ]; then
     echo "- Top 10 genes: ${ANNOTATION_PLOTS_DIR}/top10_genes_table.csv"
-    echo "- Top 10 products: ${COUNTS_DIR}/top10_genes_products.csv"
     echo "- Expression heatmap: ${ANNOTATION_PLOTS_DIR}/top10_genes_heatmap.pdf"
 else
     echo "- Expression analysis: Not generated"
