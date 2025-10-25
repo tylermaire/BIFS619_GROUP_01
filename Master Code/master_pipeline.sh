@@ -86,7 +86,7 @@ mkdir -p "${BASE_DIR}/02_annotation/plots"
 # Define paths for data and outputs
 RAW_FASTQ_DIR="${BASE_DIR}/00_rawdata/fastq_data/samples"
 REFERENCE_DIR="${BASE_DIR}/00_rawdata/fastq_data/reference"
-REFERENCE_FASTA="${REFERENCE_DIR}/NZ_CP076404.1.fasta"
+REFERENCE_FASTA="${REFERENCE_DIR}/GCF_000005845.2.fna"
 REFERENCE_GTF="${REFERENCE_DIR}/test.gtf"
 REFERENCE_SAF="${REFERENCE_DIR}/test.saf"
 FASTQC_OUT="${BASE_DIR}/00_rawdata/fastQC"
@@ -290,7 +290,8 @@ echo "Downloading reference genome and annotation..."
 # Download reference genome FASTA if it doesn't exist
 if [ ! -f "$REFERENCE_FASTA" ]; then
     echo "Downloading reference genome FASTA..."
-    wget -O "$REFERENCE_FASTA" "https://www.ncbi.nlm.nih.gov/sviewer/viewer.cgi?tool=portal&save=file&log$=seqview&db=nuccore&report=fasta&id=NZ_CP076404.1&extrafeat=976&conwithfeat=on&hide-cdd=on"
+    wget -O "$REFERENCE_FASTA" "https://ftp.ncbi.nlm.nih.gov/genomes/all/GCF/000/005/845/GCF_000005845.2_ASM584v2/GCF_000005845.2_ASM584v2_genomic.fna.gz"
+    gunzip "$REFERENCE_FASTA"
     
     # Verify the file exists and isn't empty
     if [ ! -s "$REFERENCE_FASTA" ]; then
