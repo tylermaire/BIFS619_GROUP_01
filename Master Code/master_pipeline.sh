@@ -1,1031 +1,591 @@
 #!/bin/bash
-# ====================================================================================
-# BIFS619_GROUP_01 RNA-Seq Analysis Master Pipeline
-# Author: Group 01 (Master code complied by Tyler Maire)
-# ====================================================================================
+#############################################################################
+# RNA-Seq Analysis Pipeline Master Script
+# Version: 3.3
+# Last Updated: 2025-10-25
+#############################################################################
+# Description:
+# This script performs a complete RNA-Seq analysis pipeline including:
+# - Raw data download and validation
+# - Quality control
+# - Read alignment
+# - Gene quantification
+# - Results visualization
+#############################################################################
 
-# Fix for Qt/matplotlib issues
-export QT_QPA_PLATFORM=offscreen
+# Strict error handling
+set -euo pipefail
+IFS=$'\n\t'
 
-# Progress tracking
-FASTQC_COMPLETE=false
-CLEANING_COMPLETE=false
-ALIGNMENT_COMPLETE=false
-COUNTS_GENERATED=false
-HEATMAP_GENERATED=false
+#############################################################################
+# Configuration Variables
+#############################################################################
 
-# ====================================================================================
-# INTRODUCTION AND USAGE INSTRUCTIONS
-# ====================================================================================
-# This script automates the ENTIRE RNA-seq analysis workflow including:
-# - Automatic download of raw data from NCBI SRA
-# - Automatic download of reference genome and annotation
-# - Quality control of raw reads (FastQC/MultiQC)
-# - Read cleaning (fastp)
-# - Reference genome alignment (HISAT2)
-# - Gene expression quantification (featureCounts)
-# - Visualization and analysis of expression data (R)
-#
-# USAGE:
-#   ./master_pipeline.sh <project_directory>
-#
-# EXAMPLE:
-#   ./master_pipeline.sh ~/my_rnaseq_project
-#
-# No additional setup required - script handles everything automatically!
-# ====================================================================================
+# Version information
+readonly VERSION="3.3"
+readonly SCRIPT_NAME=$(basename "$0")
+readonly SCRIPT_DIR=$(dirname "$(readlink -f "$0")")
+readonly START_TIME=$(date +"%Y-%m-%d %H:%M:%S")
+readonly SCRIPT_USER="$USER"
 
-# Check if project directory was provided
-if [ $# -ne 1 ]; then
-    echo "Error: Please provide a project directory path"
-    echo "Usage: ./master_pipeline.sh <project_directory>"
-    exit 1
-fi
+# Directory structure
+readonly BASE_DIR="$PWD"
+readonly RAW_DATA_DIR="${BASE_DIR}/00_rawdata"
+readonly FASTQ_DIR="${RAW_DATA_DIR}/fastq_data"
+readonly REF_DIR="${FASTQ_DIR}/reference"
+readonly SAMPLES_DIR="${FASTQ_DIR}/samples"
+readonly ALIGNMENT_DIR="${BASE_DIR}/01_allignment"
+readonly HISAT_INDEX_DIR="${ALIGNMENT_DIR}/alignment/hisat2_index"
+readonly QC_DIR="${ALIGNMENT_DIR}/QC"
+readonly ANNOTATION_DIR="${BASE_DIR}/02_annotation"
+readonly COUNTS_DIR="${ANNOTATION_DIR}/counts"
+readonly MASTER_QC_DIR="${BASE_DIR}/master_qc_report"
+readonly LOG_DIR="${BASE_DIR}/logs"
 
-# Create project directory if it doesn't exist
-PROJECT_DIR="$1"
-mkdir -p "$PROJECT_DIR"
-echo "Project will be created in: $PROJECT_DIR"
-BASE_DIR="$PROJECT_DIR"
+# Reference genome information
+readonly REF_GENOME_URL="https://ftp.ncbi.nlm.nih.gov/genomes/all/GCF/000/005/845/GCF_000005845.2_ASM584v2/GCF_000005845.2_ASM584v2_genomic.fna.gz"
+readonly REF_GENOME_FILE="GCF_000005845.2.fna"
+readonly REF_GENOME_GZ="${REF_GENOME_FILE}.gz"
 
-# Variables to control which steps run
-RUN_SRA_DOWNLOAD=true
-RUN_R_HEATMAP=true
+# Sample information
+declare -A SAMPLES
+SAMPLES=(
+    ["SRR9613403"]="ftp.sra.ebi.ac.uk/vol1/fastq/SRR961/003/SRR9613403"
+    ["SRR9613404"]="ftp.sra.ebi.ac.uk/vol1/fastq/SRR961/004/SRR9613404"
+    ["SRR9613405"]="ftp.sra.ebi.ac.uk/vol1/fastq/SRR961/005/SRR9613405"
+)
 
-# Record script execution details
-SCRIPT_VERSION="3.3"
-RUN_DATE=$(date +"%Y-%m-%d %H:%M:%S")
-RUN_USER="tylermaireok"
+# Resource allocation
+readonly CPU_CORES=$(nproc)
+readonly MEMORY_GB=$(free -g | awk '/^Mem:/{print $2}')
+readonly THREADS=$((CPU_CORES > 8 ? 8 : CPU_CORES))
 
-echo "RNA-Seq Analysis Pipeline v${SCRIPT_VERSION}"
-echo "Started by: ${RUN_USER} on ${RUN_DATE}"
-echo "======================================================================"
+# Log file
+readonly LOG_FILE="${LOG_DIR}/pipeline_$(date +%Y%m%d_%H%M%S).log"
+readonly ERROR_LOG="${LOG_DIR}/pipeline_$(date +%Y%m%d_%H%M%S).err"
 
-# ====================================================================================
-# CREATE DIRECTORY STRUCTURE
-# ====================================================================================
-echo "Creating directory structure..."
+#############################################################################
+# Logging Functions
+#############################################################################
 
-# Create standard directory structure
-mkdir -p "${BASE_DIR}/00_rawdata/fastq_data/samples"
-mkdir -p "${BASE_DIR}/00_rawdata/fastq_data/reference"
-mkdir -p "${BASE_DIR}/00_rawdata/fastQC"
-mkdir -p "${BASE_DIR}/01_allignment/QC/cleaned_fastq"
-mkdir -p "${BASE_DIR}/01_allignment/QC/tables"
-mkdir -p "${BASE_DIR}/01_allignment/QC/plots"
-mkdir -p "${BASE_DIR}/01_allignment/alignment/hisat2_index"
-mkdir -p "${BASE_DIR}/01_allignment/alignment/bam"
-mkdir -p "${BASE_DIR}/01_allignment/alignment/logs"
-mkdir -p "${BASE_DIR}/01_allignment/alignment/tables"
-mkdir -p "${BASE_DIR}/01_allignment/alignment/plots"
-mkdir -p "${BASE_DIR}/01_allignment/code"
-mkdir -p "${BASE_DIR}/02_annotation/code"
-mkdir -p "${BASE_DIR}/02_annotation/counts"
-mkdir -p "${BASE_DIR}/02_annotation/plots"
+# Initialize logging
+setup_logging() {
+    mkdir -p "${LOG_DIR}"
+    exec 3>&1 4>&2
+    trap 'exec 1>&3 2>&4' 0 1 2 3
+    exec 1>"${LOG_FILE}" 2>"${ERROR_LOG}"
+}
 
-# Define paths for data and outputs
-RAW_FASTQ_DIR="${BASE_DIR}/00_rawdata/fastq_data/samples"
-REFERENCE_DIR="${BASE_DIR}/00_rawdata/fastq_data/reference"
-REFERENCE_FASTA="${REFERENCE_DIR}/GCF_000005845.2.fna"
-REFERENCE_GTF="${REFERENCE_DIR}/test.gtf"
-REFERENCE_SAF="${REFERENCE_DIR}/test.saf"
-FASTQC_OUT="${BASE_DIR}/00_rawdata/fastQC"
-CLEANED_FASTQ_DIR="${BASE_DIR}/01_allignment/QC/cleaned_fastq"
-QC_TABLES_DIR="${BASE_DIR}/01_allignment/QC/tables"
-QC_PLOTS_DIR="${BASE_DIR}/01_allignment/QC/plots"
-HISAT2_INDEX_DIR="${BASE_DIR}/01_allignment/alignment/hisat2_index"
-BAM_DIR="${BASE_DIR}/01_allignment/alignment/bam"
-ALIGN_LOGS_DIR="${BASE_DIR}/01_allignment/alignment/logs"
-ALIGN_TABLES_DIR="${BASE_DIR}/01_allignment/alignment/tables"
-ALIGN_PLOTS_DIR="${BASE_DIR}/01_allignment/alignment/plots"
-COUNTS_DIR="${BASE_DIR}/02_annotation/counts"
-ANNOTATION_PLOTS_DIR="${BASE_DIR}/02_annotation/plots"
-MASTER_QC_DIR="${BASE_DIR}/master_qc_report"
+# Log message with timestamp
+log_message() {
+    local level=$1
+    shift
+    local message="$*"
+    local timestamp=$(date +"%Y-%m-%d %H:%M:%S")
+    echo "[${timestamp}] [${level}] ${message}" | tee -a "${LOG_FILE}"
+}
 
-# Sample IDs we're using
-SAMPLES=("SRR9613403" "SRR9613404" "SRR9613405")
-THREADS=8
+# Info level logging
+log_info() {
+    log_message "INFO" "$@"
+}
 
-# ====================================================================================
-# CHECK AND INSTALL DEPENDENCIES
-# ====================================================================================
-echo "Checking required software..."
-missing_deps=0
+# Warning level logging
+log_warning() {
+    log_message "WARNING" "$@" >&2
+}
 
-check_dependency() {
-    if command -v $1 >/dev/null 2>&1; then
-        echo "✓ $1 is installed"
+# Error level logging
+log_error() {
+    log_message "ERROR" "$@" >&2
+}
+
+# Debug level logging
+log_debug() {
+    if [[ "${DEBUG:-false}" == "true" ]]; then
+        log_message "DEBUG" "$@"
+    fi
+}
+
+#############################################################################
+# Error Handling Functions
+#############################################################################
+
+# Error handler
+error_handler() {
+    local line_num=$1
+    local error_code=$2
+    local last_command="${BASH_COMMAND}"
+    
+    log_error "Error occurred in ${SCRIPT_NAME} on line ${line_num}"
+    log_error "Last command: ${last_command}"
+    log_error "Exit code: ${error_code}"
+    
+    cleanup_and_exit ${error_code}
+}
+
+# Set error trap
+trap 'error_handler ${LINENO} $?' ERR
+
+# Cleanup function
+cleanup_and_exit() {
+    local exit_code=${1:-0}
+    
+    log_info "Cleaning up temporary files..."
+    
+    # Remove temporary files
+    find /tmp -name "pipeline_tmp_*" -user "${USER}" -delete 2>/dev/null || true
+    
+    # Remove incomplete downloads
+    find "${FASTQ_DIR}" -name "*.gz.tmp" -delete 2>/dev/null || true
+    
+    log_info "Pipeline ended with exit code: ${exit_code}"
+    exit "${exit_code}"
+}
+
+#############################################################################
+# Utility Functions
+#############################################################################
+
+# Print section header
+print_section_header() {
+    local title="$1"
+    local line="======================================================================"
+    echo "${line}"
+    echo "${title}"
+    echo "${line}"
+}
+
+# Check if a command exists
+check_command() {
+    local cmd="$1"
+    if command -v "${cmd}" >/dev/null 2>&1; then
+        log_info "✓ ${cmd} is installed"
         return 0
     else
-        echo "✗ $1 is required but not installed"
+        log_error "✗ ${cmd} is required but not installed"
         return 1
     fi
 }
 
-# Check for conda/mamba first as it's the preferred installation method
-if check_dependency conda; then
-    USE_CONDA=true
-    echo "Conda detected - will use conda for package installation"
-    
-    # Check if mamba is available (faster conda)
-    if check_dependency mamba; then
-        CONDA_CMD="mamba"
+# Check file existence
+check_file() {
+    local file="$1"
+    if [[ -f "${file}" ]]; then
+        log_debug "File exists: ${file}"
+        return 0
     else
-        CONDA_CMD="conda"
+        log_error "Required file not found: ${file}"
+        return 1
     fi
-else
-    USE_CONDA=false
-    echo "Conda not detected - will use apt for package installation"
-fi
+}
 
-# Check all dependencies
-check_dependency fastqc || missing_deps=1
-check_dependency multiqc || missing_deps=1
-check_dependency fastp || missing_deps=1
-check_dependency hisat2 || missing_deps=1
-check_dependency samtools || missing_deps=1
-check_dependency featureCounts || missing_deps=1
-check_dependency wget || missing_deps=1
-check_dependency python3 || missing_deps=1
-
-# Check for SRA tools (multiple possible commands)
-if check_dependency fasterq-dump || check_dependency fastq-dump || check_dependency prefetch; then
-    echo "✓ SRA tools are installed"
-else
-    echo "✗ SRA tools are required but not installed"
-    missing_deps=1
-    RUN_SRA_DOWNLOAD=false
-fi
-
-# Check for R
-if check_dependency Rscript; then
-    echo "✓ Rscript is installed"
-else
-    echo "✗ Rscript is required but not installed"
-    missing_deps=1
-    RUN_R_HEATMAP=false
-fi
-
-# Check for zlib/gzip
-check_dependency gzip || missing_deps=1
-check_dependency gunzip || missing_deps=1
-
-if [ $missing_deps -eq 1 ]; then
-    echo ""
-    echo "Installing missing dependencies..."
-    
-    if [ "$USE_CONDA" = true ]; then
-        echo "Using conda to install dependencies..."
-        
-        # Create and activate environment
-        $CONDA_CMD create -y -n rnaseq_env
-        eval "$($CONDA_CMD shell.bash hook)"
-        $CONDA_CMD activate rnaseq_env
-        
-        # Install bioinformatics tools
-        $CONDA_CMD install -y -c bioconda \
-            fastqc multiqc fastp hisat2 samtools subread sra-tools \
-            r-base r-dplyr r-pheatmap python pandas matplotlib
-            
-        echo "Conda environment 'rnaseq_env' created with all dependencies."
-        echo "Activate with: conda activate rnaseq_env"
+# Calculate MD5 checksum
+calculate_md5() {
+    local file="$1"
+    if [[ -f "${file}" ]]; then
+        md5sum "${file}" | cut -d' ' -f1
     else
-        echo "Using apt to install dependencies..."
-        # Try to install packages via apt
-        sudo apt update
-        sudo apt install -y fastqc multiqc
-        sudo apt install -y fastp hisat2 samtools
-        sudo apt install -y subread  # For featureCounts
-        sudo apt install -y sra-toolkit # For SRA tools
-        sudo apt install -y r-base r-base-core # For R
-        sudo apt install -y python3-pip
-        pip3 install --user pandas matplotlib
-        
-        # Try installing R packages if R is now installed
-        if command -v Rscript >/dev/null 2>&1; then
-            echo "Installing R packages..."
-            Rscript -e 'if(!require("dplyr")) install.packages("dplyr", repos="https://cloud.r-project.org")'
-            Rscript -e 'if(!require("pheatmap")) install.packages("pheatmap", repos="https://cloud.r-project.org")'
-        else
-            echo "R installation failed, will skip heatmap generation."
-            RUN_R_HEATMAP=false
+        log_error "Cannot calculate MD5 for non-existent file: ${file}"
+        return 1
+    fi
+}
+
+# Validate file size
+validate_file_size() {
+    local file="$1"
+    local min_size="$2"
+    
+    if [[ -f "${file}" ]]; then
+        local size=$(stat -f%z "${file}" 2>/dev/null || stat -c%s "${file}")
+        if (( size >= min_size )); then
+            return 0
         fi
     fi
-    
-    # Check again if all dependencies are installed
-    echo "Checking if all dependencies are now installed..."
-    missing_deps=0
-    check_dependency fastqc || missing_deps=1
-    check_dependency multiqc || missing_deps=1
-    check_dependency fastp || missing_deps=1
-    check_dependency hisat2 || missing_deps=1
-    check_dependency samtools || missing_deps=1
-    check_dependency featureCounts || missing_deps=1
-    check_dependency wget || missing_deps=1
-    check_dependency python3 || missing_deps=1
-    
-    # Check SRA tools again
-    if check_dependency fasterq-dump || check_dependency fastq-dump || check_dependency prefetch; then
-        echo "✓ SRA tools are now installed"
-        RUN_SRA_DOWNLOAD=true
-    else
-        echo "✗ SRA tools installation failed"
-        RUN_SRA_DOWNLOAD=false
-    fi
-    
-    # Check R again
-    if check_dependency Rscript; then
-        echo "✓ Rscript is now installed"
-        RUN_R_HEATMAP=true
-    else
-        echo "✗ Rscript installation failed"
-        RUN_R_HEATMAP=false
-    fi
-    
-    if [ $missing_deps -eq 1 ]; then
-        echo "Some dependencies could not be installed automatically."
-        echo "The script will continue but some steps may be skipped."
-    else
-        echo "All dependencies successfully installed!"
-    fi
-fi
+    return 1
+}
 
-# ====================================================================================
-# DOWNLOAD RAW DATA FROM SRA
-# ====================================================================================
-echo "=== STEP 0: Preparing raw data ==="
+#############################################################################
+# Setup Functions
+#############################################################################
 
-if [ "$RUN_SRA_DOWNLOAD" = true ]; then
-    echo "Downloading raw data from NCBI SRA..."
-    for sample in "${SAMPLES[@]}"; do
-        echo "Downloading ${sample} from NCBI SRA..."
-        if [ ! -f "${RAW_FASTQ_DIR}/${sample}_1.fastq.gz" ] || [ ! -f "${RAW_FASTQ_DIR}/${sample}_2.fastq.gz" ]; then
-            # Try fasterq-dump first (preferred), fall back to fastq-dump
-            if command -v fasterq-dump >/dev/null 2>&1; then
-                fasterq-dump --split-files --threads "$THREADS" --outdir "${RAW_FASTQ_DIR}" "$sample"
-            else
-                fastq-dump --split-files --outdir "${RAW_FASTQ_DIR}" "$sample"
-            fi
-            
-            # Compress the FASTQ files
-            gzip "${RAW_FASTQ_DIR}/${sample}_1.fastq"
-            gzip "${RAW_FASTQ_DIR}/${sample}_2.fastq"
+# Create directory structure
+create_directory_structure() {
+    log_info "Creating directory structure..."
+    
+    local directories=(
+        "${RAW_DATA_DIR}"
+        "${FASTQ_DIR}"
+        "${REF_DIR}"
+        "${SAMPLES_DIR}"
+        "${ALIGNMENT_DIR}"
+        "${HISAT_INDEX_DIR}"
+        "${QC_DIR}"
+        "${ANNOTATION_DIR}"
+        "${COUNTS_DIR}"
+        "${MASTER_QC_DIR}"
+        "${LOG_DIR}"
+    )
+    
+    for dir in "${directories[@]}"; do
+        if mkdir -p "${dir}"; then
+            log_debug "Created directory: ${dir}"
         else
-            echo "FASTQ files for ${sample} already exist, skipping download."
+            log_error "Failed to create directory: ${dir}"
+            return 1
         fi
     done
-else
-    echo "SRA download tools not available. Please manually download FASTQ files to:"
-    echo "$RAW_FASTQ_DIR"
-    echo "For each sample, files should be named: <sample_id>_1.fastq.gz and <sample_id>_2.fastq.gz"
-    echo "Press Enter to continue once files are in place, or Ctrl+C to exit."
-    read -p ""
-fi
-
-# ====================================================================================
-# DOWNLOAD REFERENCE GENOME AND ANNOTATION
-# ====================================================================================
-echo "Downloading reference genome and annotation..."
-
-# Download reference genome FASTA if it doesn't exist
-if [ ! -f "$REFERENCE_FASTA" ]; then
-    echo "Downloading reference genome FASTA..."
-    wget -O "$REFERENCE_FASTA" "https://ftp.ncbi.nlm.nih.gov/genomes/all/GCF/000/005/845/GCF_000005845.2_ASM584v2/GCF_000005845.2_ASM584v2_genomic.fna.gz"
-    gunzip "$REFERENCE_FASTA"
     
-    # Verify the file exists and isn't empty
-    if [ ! -s "$REFERENCE_FASTA" ]; then
-        echo "WARNING: Failed to download FASTA file or file is empty."
-        echo "Please manually add the FASTA file to: $REFERENCE_FASTA"
-        echo "Press Enter to continue anyway, or Ctrl+C to exit."
-        read -p ""
-    else
-        echo "Reference genome FASTA downloaded successfully."
-    fi
-else
-    echo "Reference genome FASTA already exists, skipping download."
-fi
+    log_info "Directory structure created successfully"
+}
 
-# Create a minimal GTF file for featureCounts (we confirmed this works)
-echo "Creating a minimal GTF annotation file..."
-cat > "$REFERENCE_GTF" << 'EOL'
-NZ_CP076404.1   RefSeq  exon    258 1154    .   +   .   gene_id "gene1"; gene_name "dnaA";
-NZ_CP076404.1   RefSeq  exon    1165    2289    .   +   .   gene_id "gene2"; gene_name "dnaN";
-NZ_CP076404.1   RefSeq  exon    2293    3321    .   +   .   gene_id "gene3"; gene_name "gyrB";
-NZ_CP076404.1   RefSeq  exon    3318    5069    .   +   .   gene_id "gene4"; gene_name "recF";
-NZ_CP076404.1   RefSeq  exon    5100    5843    .   +   .   gene_id "gene5"; gene_name "gyrA";
-NZ_CP076404.1   RefSeq  exon    5843    6673    .   +   .   gene_id "gene6"; gene_name "serS";
-NZ_CP076404.1   RefSeq  exon    6689    9781    .   +   .   gene_id "gene7"; gene_name "rpoD";
-NZ_CP076404.1   RefSeq  exon    9794    10897   .   +   .   gene_id "gene8"; gene_name "dnaG";
-NZ_CP076404.1   RefSeq  exon    10903   13119   .   +   .   gene_id "gene9"; gene_name "rpoC";
-NZ_CP076404.1   RefSeq  exon    13116   17204   .   +   .   gene_id "gene10"; gene_name "rpoB";
-EOL
-
-# Verify GTF file was created
-if [ ! -s "$REFERENCE_GTF" ]; then
-    echo "WARNING: GTF file creation failed or file is empty."
-    echo "Creating GTF file again with verified method..."
-    printf "NZ_CP076404.1\tRefSeq\texon\t258\t1154\t.\t+\t.\tgene_id \"gene1\"; gene_name \"dnaA\";\n" > "$REFERENCE_GTF"
-    printf "NZ_CP076404.1\tRefSeq\texon\t1165\t2289\t.\t+\t.\tgene_id \"gene2\"; gene_name \"dnaN\";\n" >> "$REFERENCE_GTF"
-    printf "NZ_CP076404.1\tRefSeq\texon\t2293\t3321\t.\t+\t.\tgene_id \"gene3\"; gene_name \"gyrB\";\n" >> "$REFERENCE_GTF"
-    printf "NZ_CP076404.1\tRefSeq\texon\t3318\t5069\t.\t+\t.\tgene_id \"gene4\"; gene_name \"recF\";\n" >> "$REFERENCE_GTF"
-    printf "NZ_CP076404.1\tRefSeq\texon\t5100\t5843\t.\t+\t.\tgene_id \"gene5\"; gene_name \"gyrA\";\n" >> "$REFERENCE_GTF"
-fi
-
-# Create a SAF format file as backup (we confirmed this works too)
-echo "Creating a SAF format annotation file as backup..."
-cat > "$REFERENCE_SAF" << 'EOL'
-GeneID  Chr Start   End Strand
-gene1   NZ_CP076404.1   258 1154    +
-gene2   NZ_CP076404.1   1165    2289    +
-gene3   NZ_CP076404.1   2293    3321    +
-gene4   NZ_CP076404.1   3318    5069    +
-gene5   NZ_CP076404.1   5100    5843    +
-gene6   NZ_CP076404.1   5843    6673    +
-gene7   NZ_CP076404.1   6689    9781    +
-gene8   NZ_CP076404.1   9794    10897   +
-gene9   NZ_CP076404.1   10903   13119   +
-gene10  NZ_CP076404.1   13116   17204   +
-EOL
-
-# Verify SAF file was created
-if [ ! -s "$REFERENCE_SAF" ]; then
-    echo "WARNING: SAF file creation failed or file is empty."
-    echo "Creating SAF file again with verified method..."
-    printf "GeneID\tChr\tStart\tEnd\tStrand\n" > "$REFERENCE_SAF"
-    printf "gene1\tNZ_CP076404.1\t258\t1154\t+\n" >> "$REFERENCE_SAF"
-    printf "gene2\tNZ_CP076404.1\t1165\t2289\t+\n" >> "$REFERENCE_SAF"
-    printf "gene3\tNZ_CP076404.1\t2293\t3321\t+\n" >> "$REFERENCE_SAF"
-    printf "gene4\tNZ_CP076404.1\t3318\t5069\t+\n" >> "$REFERENCE_SAF"
-    printf "gene5\tNZ_CP076404.1\t5100\t5843\t+\n" >> "$REFERENCE_SAF"
-fi
-
-# Verify annotation files exist
-if [ -s "$REFERENCE_GTF" ]; then
-    echo "GTF file created successfully: $(wc -l < "$REFERENCE_GTF") lines"
-else
-    echo "ERROR: Failed to create GTF file."
-fi
-
-if [ -s "$REFERENCE_SAF" ]; then
-    echo "SAF file created successfully: $(wc -l < "$REFERENCE_SAF") lines"
-else
-    echo "ERROR: Failed to create SAF file."
-fi
-
-# ====================================================================================
-# STEP 1: QUALITY CONTROL WITH FASTQC
-# ====================================================================================
-
-echo "=== STEP 1: Running FastQC ==="
-
-for sample in "${SAMPLES[@]}"; do
-    if [ -f "${RAW_FASTQ_DIR}/${sample}_1.fastq.gz" ] && [ -f "${RAW_FASTQ_DIR}/${sample}_2.fastq.gz" ]; then
-        echo "Running FastQC on sample ${sample}..."
-        fastqc "${RAW_FASTQ_DIR}/${sample}_1.fastq.gz" "${RAW_FASTQ_DIR}/${sample}_2.fastq.gz" -o "$FASTQC_OUT"
-        
-        # Check if FastQC output was created
-        if [ -f "${FASTQC_OUT}/${sample}_1_fastqc.html" ] && [ -f "${FASTQC_OUT}/${sample}_2_fastqc.html" ]; then
-            echo "FastQC completed successfully for ${sample}."
-        else
-            echo "WARNING: FastQC may have failed for ${sample}."
+# Check required software
+check_requirements() {
+    log_info "Checking required software..."
+    
+    local required_commands=(
+        "conda"
+        "mamba"
+        "fastqc"
+        "multiqc"
+        "fastp"
+        "hisat2"
+        "samtools"
+        "featureCounts"
+        "wget"
+        "python3"
+        "gzip"
+        "gunzip"
+        "snakemake"
+    )
+    
+    local missing_commands=0
+    for cmd in "${required_commands[@]}"; do
+        if ! check_command "${cmd}"; then
+            ((missing_commands++))
         fi
-    else
-        echo "WARNING: FASTQ files for ${sample} not found. Skipping FastQC for this sample."
-    fi
-done
-
-# Run MultiQC to summarize FastQC results
-echo "Running MultiQC to summarize FastQC results..."
-multiqc "$FASTQC_OUT" -o "$FASTQC_OUT"
-
-# Check if MultiQC output was created
-if [ -f "${FASTQC_OUT}/multiqc_report.html" ]; then
-    echo "MultiQC completed successfully."
-    FASTQC_COMPLETE=true
-else
-    echo "WARNING: MultiQC may have failed."
-    FASTQC_COMPLETE=false
-fi
-
-# ====================================================================================
-# STEP 2: READ CLEANING WITH FASTP
-# ====================================================================================
-
-echo "=== STEP 2: Cleaning reads with fastp ==="
-
-for sample in "${SAMPLES[@]}"; do
-    if [ -f "${RAW_FASTQ_DIR}/${sample}_1.fastq.gz" ] && [ -f "${RAW_FASTQ_DIR}/${sample}_2.fastq.gz" ]; then
-        echo "Cleaning reads for sample ${sample}..."
-        fastp \
-            -i "${RAW_FASTQ_DIR}/${sample}_1.fastq.gz" \
-            -I "${RAW_FASTQ_DIR}/${sample}_2.fastq.gz" \
-            -o "${CLEANED_FASTQ_DIR}/${sample}_1.clean.fastq.gz" \
-            -O "${CLEANED_FASTQ_DIR}/${sample}_2.clean.fastq.gz" \
-            --html "${CLEANED_FASTQ_DIR}/${sample}_fastp.html" \
-            --json "${CLEANED_FASTQ_DIR}/${sample}_fastp.json" \
-            --thread "$THREADS"
-        
-        # Check if cleaning output was created
-        if [ -f "${CLEANED_FASTQ_DIR}/${sample}_1.clean.fastq.gz" ] && [ -f "${CLEANED_FASTQ_DIR}/${sample}_2.clean.fastq.gz" ]; then
-            echo "Cleaning completed successfully for ${sample}."
-        else
-            echo "WARNING: Cleaning may have failed for ${sample}."
-        fi
-    else
-        echo "WARNING: FASTQ files for ${sample} not found. Skipping cleaning for this sample."
-    fi
-done
-
-# Check if all samples were cleaned
-cleaned_count=$(ls -1 ${CLEANED_FASTQ_DIR}/*.clean.fastq.gz 2>/dev/null | wc -l)
-if [ "$cleaned_count" -ge "$(( ${#SAMPLES[@]} * 2 ))" ]; then
-    echo "All samples were cleaned successfully."
-    CLEANING_COMPLETE=true
-else
-    echo "WARNING: Some samples may not have been cleaned."
-    CLEANING_COMPLETE=false
-fi
-
-# ====================================================================================
-# STEP 3: SUMMARIZE QC RESULTS (PYTHON)
-# ====================================================================================
-
-echo "=== STEP 3: Summarizing QC results ==="
-
-# Only proceed if cleaning was successful
-if [ "$CLEANING_COMPLETE" = true ]; then
-    # Create Python script for QC summary
-    cat << 'EOL' > "${BASE_DIR}/01_allignment/code/summarize_qc.py"
-import os
-import json
-import pandas as pd
-import matplotlib.pyplot as plt
-import sys
-
-# Get paths from command line arguments
-qc_dir = sys.argv[1]
-table_out = sys.argv[2]
-plot_out = sys.argv[3]
-samples = sys.argv[4].split(',')
-
-# Make directories for outputs if they don't exist
-os.makedirs(os.path.dirname(table_out), exist_ok=True)
-os.makedirs(os.path.dirname(plot_out), exist_ok=True)
-
-summary = []
-for sample in samples:
-    fjson = os.path.join(qc_dir, f"{sample}_fastp.json")
-    try:
-        with open(fjson) as f:
-            fastp = json.load(f)
-        before = fastp['summary']['before_filtering']['total_reads']
-        after = fastp['summary']['after_filtering']['total_reads']
-        summary.append({
-            'Sample': sample,
-            'Raw Reads': before,
-            'Cleaned Reads': after,
-            'Removed Reads': before - after,
-            'Removed %': round((before - after) / before * 100, 2)
-        })
-    except Exception as e:
-        print(f"WARNING: Could not process {fjson}: {str(e)}")
-
-# Create summary table and save to CSV
-if summary:
-    df = pd.DataFrame(summary)
-    df.to_csv(table_out, index=False)
-    print(f"Summary table saved to {table_out}")
-
-    # Create barplot
-    plt.figure(figsize=(12, 6))
-    plt.bar(df['Sample'], df['Raw Reads'], label='Raw Reads')
-    plt.bar(df['Sample'], df['Cleaned Reads'], label='Cleaned Reads')
-    plt.xlabel('Sample')
-    plt.ylabel('Read Count')
-    plt.title('Read Counts Before and After Cleaning')
-    plt.legend()
-    plt.tight_layout()
-    plt.savefig(plot_out, dpi=300)
-    print(f"Summary plot saved to {plot_out}")
-else:
-    print("WARNING: No data available to summarize.")
-EOL
-
-    echo "Running QC summary script..."
-    python3 "${BASE_DIR}/01_allignment/code/summarize_qc.py" \
-        "$CLEANED_FASTQ_DIR" \
-        "${QC_TABLES_DIR}/pre_post_cleaning_table.csv" \
-        "${QC_PLOTS_DIR}/pre_post_cleaning_barplot.png" \
-        "$(IFS=,; echo "${SAMPLES[*]}")"
+    done
     
-    # Check if outputs were created
-    if [ -f "${QC_TABLES_DIR}/pre_post_cleaning_table.csv" ] && [ -f "${QC_PLOTS_DIR}/pre_post_cleaning_barplot.png" ]; then
-        echo "QC summary completed successfully."
-    else
-        echo "WARNING: QC summary may have failed."
-    fi
-else
-    echo "Skipping QC summary as cleaning step was not completed successfully."
-fi
-
-# ====================================================================================
-# STEP 4: ALIGNMENT WITH HISAT2
-# ====================================================================================
-
-echo "=== STEP 4: Building HISAT2 index and aligning reads ==="
-
-# Check if reference FASTA exists and is not empty
-if [ ! -s "$REFERENCE_FASTA" ]; then
-    echo "ERROR: Reference genome FASTA file is missing or empty."
-    echo "Please add a valid FASTA file to: $REFERENCE_FASTA"
-    echo "Skipping alignment step."
-    ALIGNMENT_COMPLETE=false
-else
-    # Build HISAT2 index if it doesn't exist
-    if [ ! -f "${HISAT2_INDEX_DIR}/genome.1.ht2" ]; then
-        echo "Building HISAT2 index..."
-        hisat2-build "$REFERENCE_FASTA" "${HISAT2_INDEX_DIR}/genome"
-        
-        # Check if index was built
-        if [ -f "${HISAT2_INDEX_DIR}/genome.1.ht2" ]; then
-            echo "HISAT2 index built successfully."
-        else
-            echo "ERROR: HISAT2 index building failed."
-            echo "Skipping alignment step."
-            ALIGNMENT_COMPLETE=false
-        fi
-    else
-        echo "HISAT2 index already exists, skipping build step."
+    if ((missing_commands > 0)); then
+        log_error "${missing_commands} required commands are missing"
+        return 1
     fi
     
-    # Only proceed if index exists
-    if [ -f "${HISAT2_INDEX_DIR}/genome.1.ht2" ] && [ "$CLEANING_COMPLETE" = true ]; then
-        # Align reads for each sample
-        for sample in "${SAMPLES[@]}"; do
-            if [ -f "${CLEANED_FASTQ_DIR}/${sample}_1.clean.fastq.gz" ] && [ -f "${CLEANED_FASTQ_DIR}/${sample}_2.clean.fastq.gz" ]; then
-                echo "Aligning reads for sample ${sample}..."
-                hisat2 \
-                    -x "${HISAT2_INDEX_DIR}/genome" \
-                    -1 "${CLEANED_FASTQ_DIR}/${sample}_1.clean.fastq.gz" \
-                    -2 "${CLEANED_FASTQ_DIR}/${sample}_2.clean.fastq.gz" \
-                    -S "${ALIGN_LOGS_DIR}/${sample}.sam" \
-                    --summary-file "${ALIGN_LOGS_DIR}/${sample}_summary.txt" \
-                    --threads "$THREADS" \
-                    2> "${ALIGN_LOGS_DIR}/${sample}_hisat2.log"
-                
-                # Check if alignment was successful
-                if [ -f "${ALIGN_LOGS_DIR}/${sample}.sam" ]; then
-                    echo "HISAT2 alignment completed successfully for ${sample}."
-                    
-                    echo "Converting SAM to BAM for sample ${sample}..."
-                    samtools view -bS "${ALIGN_LOGS_DIR}/${sample}.sam" > "${BAM_DIR}/${sample}.bam"
-                    
-                    echo "Sorting BAM for sample ${sample}..."
-                    samtools sort -@ "$THREADS" "${BAM_DIR}/${sample}.bam" -o "${BAM_DIR}/${sample}.sorted.bam"
-                    
-                    echo "Indexing BAM for sample ${sample}..."
-                    samtools index "${BAM_DIR}/${sample}.sorted.bam"
-                    
-                    # Replace original BAM with sorted BAM
-                    mv "${BAM_DIR}/${sample}.sorted.bam" "${BAM_DIR}/${sample}.bam"
-                    mv "${BAM_DIR}/${sample}.sorted.bam.bai" "${BAM_DIR}/${sample}.bam.bai"
-                    
-                    # Remove SAM file to save space
-                    rm "${ALIGN_LOGS_DIR}/${sample}.sam"
-                else
-                    echo "ERROR: HISAT2 alignment failed for ${sample}."
-                fi
-            else
-                echo "WARNING: Cleaned FASTQ files for ${sample} not found. Skipping alignment for this sample."
-            fi
-        done
-        
-        # Check if all samples were aligned
-        aligned_count=$(ls -1 ${BAM_DIR}/*.bam 2>/dev/null | wc -l)
-        if [ "$aligned_count" -eq "${#SAMPLES[@]}" ]; then
-            echo "All samples were aligned successfully."
-            ALIGNMENT_COMPLETE=true
-        else
-            echo "WARNING: Some samples may not have been aligned."
-            ALIGNMENT_COMPLETE=false
-        fi
-    else
-        echo "Skipping alignment as prerequisites are not met."
-        ALIGNMENT_COMPLETE=false
+    log_info "All required software is installed"
+}
+
+#############################################################################
+# Data Download Functions
+#############################################################################
+
+# Download reference genome
+download_reference_genome() {
+    log_info "Downloading reference genome..."
+    
+    local temp_file="${REF_DIR}/${REF_GENOME_GZ}.tmp"
+    local final_file="${REF_DIR}/${REF_GENOME_GZ}"
+    
+    if [[ -f "${REF_DIR}/${REF_GENOME_FILE}" ]]; then
+        log_info "Reference genome already exists, skipping download"
+        return 0
     fi
-fi
-
-# ====================================================================================
-# STEP 5: SUMMARIZE ALIGNMENT RESULTS (PYTHON)
-# ====================================================================================
-
-echo "=== STEP 5: Summarizing alignment results ==="
-
-# Only proceed if alignment was successful
-if [ "$ALIGNMENT_COMPLETE" = true ]; then
-    # Create Python script for alignment summary
-    cat << 'EOL' > "${BASE_DIR}/01_allignment/code/summarize_alignment.py"
-import os
-import re
-import pandas as pd
-import matplotlib.pyplot as plt
-import sys
-
-# Get paths from command line arguments
-logs_dir = sys.argv[1]
-table_out = sys.argv[2]
-plot_out = sys.argv[3]
-samples = sys.argv[4].split(',')
-
-# Make directories for outputs if they don't exist
-os.makedirs(os.path.dirname(table_out), exist_ok=True)
-os.makedirs(os.path.dirname(plot_out), exist_ok=True)
-
-summary = []
-for sample in samples:
-    summary_file = os.path.join(logs_dir, f"{sample}_summary.txt")
     
-    try:
-        with open(summary_file, 'r') as f:
-            content = f.read()
-        
-        # Extract alignment stats
-        total_reads = int(re.search(r'(\d+) reads; of these:', content).group(1))
-        aligned_concordantly = int(re.search(r'(\d+) \(\d+\.\d+\%\) aligned concordantly exactly 1 time', content).group(1))
-        aligned_concordantly_multiple = int(re.search(r'(\d+) \(\d+\.\d+\%\) aligned concordantly >1 times', content).group(1))
-        total_aligned = aligned_concordantly + aligned_concordantly_multiple
-        mapping_rate = total_aligned / total_reads * 100
-        
-        summary.append({
-            'Sample': sample,
-            'Total Reads': total_reads,
-            'Aligned Reads': total_aligned,
-            'Unique Alignments': aligned_concordantly,
-            'Multiple Alignments': aligned_concordantly_multiple,
-            'Mapping Rate (%)': round(mapping_rate, 2)
-        })
-    except Exception as e:
-        print(f"WARNING: Could not process {summary_file}: {str(e)}")
-
-# Create summary table and save to CSV
-if summary:
-    df = pd.DataFrame(summary)
-    df.to_csv(table_out, index=False)
-    print(f"Alignment summary table saved to {table_out}")
-
-    # Create mapping rate barplot
-    plt.figure(figsize=(10, 6))
-    plt.bar(df['Sample'], df['Mapping Rate (%)'])
-    plt.xlabel('Sample')
-    plt.ylabel('Mapping Rate (%)')
-    plt.title('Mapping Rate by Sample')
-    plt.ylim(0, 100)
-    for i, v in enumerate(df['Mapping Rate (%)']):
-        plt.text(i, v+1, f"{v}%", ha='center')
-    plt.tight_layout()
-    plt.savefig(plot_out, dpi=300)
-    print(f"Mapping rate plot saved to {plot_out}")
-else:
-    print("WARNING: No alignment data available to summarize.")
-EOL
-
-    echo "Running alignment summary script..."
-    python3 "${BASE_DIR}/01_allignment/code/summarize_alignment.py" \
-        "$ALIGN_LOGS_DIR" \
-        "${ALIGN_TABLES_DIR}/alignment_summary.csv" \
-        "${ALIGN_PLOTS_DIR}/mapping_percent_barplot.png" \
-        "$(IFS=,; echo "${SAMPLES[*]}")"
-    
-    # Check if outputs were created
-    if [ -f "${ALIGN_TABLES_DIR}/alignment_summary.csv" ] && [ -f "${ALIGN_PLOTS_DIR}/mapping_percent_barplot.png" ]; then
-        echo "Alignment summary completed successfully."
-    else
-        echo "WARNING: Alignment summary may have failed."
-    fi
-else
-    echo "Skipping alignment summary as alignment step was not completed successfully."
-fi
-
-# ====================================================================================
-# STEP 6: QUANTIFICATION WITH FEATURECOUNTS
-# ====================================================================================
-
-echo "=== STEP 6: Quantifying gene expression with featureCounts ==="
-
-# Check if alignment was successful
-if [ "$ALIGNMENT_COMPLETE" = true ]; then
-    echo "Starting gene expression quantification..."
-    
-    # Debug: Print file contents to verify they're correct
-    echo "Verifying annotation files before running featureCounts:"
-    echo "GTF file (first 3 lines):"
-    head -n 3 "$REFERENCE_GTF"
-    echo "SAF file (first 3 lines):"
-    head -n 3 "$REFERENCE_SAF"
-    
-    # Try GTF approach first (confirmed working)
-    echo "Running featureCounts with GTF annotation..."
-    featureCounts \
-      -a "$REFERENCE_GTF" \
-      -o "${COUNTS_DIR}/raw_counts.txt" \
-      -t exon \
-      -g gene_id \
-      -p \
-      -T "$THREADS" \
-      ${BAM_DIR}/*.bam
-      
-    # Check if counts were generated
-    if [ -s "${COUNTS_DIR}/raw_counts.txt" ]; then
-        echo "FeatureCounts completed successfully with GTF."
-        COUNTS_GENERATED=true
-    else
-        echo "WARNING: featureCounts failed with GTF, trying SAF format..."
-        
-        # Try with SAF format (also confirmed working)
-        featureCounts \
-          -a "$REFERENCE_SAF" \
-          -F SAF \
-          -o "${COUNTS_DIR}/raw_counts.txt" \
-          -p \
-          -T "$THREADS" \
-          ${BAM_DIR}/*.bam
-        
-        # Check again
-        if [ -s "${COUNTS_DIR}/raw_counts.txt" ]; then
-            echo "FeatureCounts completed successfully with SAF format."
-            COUNTS_GENERATED=true
-        else
-            echo "WARNING: FeatureCounts with automatic approaches failed. Trying direct file creation..."
-            
-            # Last resort - create the GTF file directly in a more controlled way
-            GTF_TEMP="${REFERENCE_DIR}/direct.gtf"
-            echo -e "NZ_CP076404.1\tRefSeq\texon\t258\t1154\t.\t+\t.\tgene_id \"gene1\"; gene_name \"dnaA\";" > "$GTF_TEMP"
-            echo -e "NZ_CP076404.1\tRefSeq\texon\t1165\t2289\t.\t+\t.\tgene_id \"gene2\"; gene_name \"dnaN\";" >> "$GTF_TEMP"
-            echo -e "NZ_CP076404.1\tRefSeq\texon\t2293\t3321\t.\t+\t.\tgene_id \"gene3\"; gene_name \"gyrB\";" >> "$GTF_TEMP"
-            echo -e "NZ_CP076404.1\tRefSeq\texon\t3318\t5069\t.\t+\t.\tgene_id \"gene4\"; gene_name \"recF\";" >> "$GTF_TEMP"
-            echo -e "NZ_CP076404.1\tRefSeq\texon\t5100\t5843\t.\t+\t.\tgene_id \"gene5\"; gene_name \"gyrA\";" >> "$GTF_TEMP"
-            
-            featureCounts \
-              -a "$GTF_TEMP" \
-              -o "${COUNTS_DIR}/raw_counts.txt" \
-              -t exon \
-              -g gene_id \
-              -p \
-              -T "$THREADS" \
-              ${BAM_DIR}/*.bam
-              
-            if [ -s "${COUNTS_DIR}/raw_counts.txt" ]; then
-                echo "FeatureCounts succeeded with direct GTF creation."
-                COUNTS_GENERATED=true
-            else
-                echo "WARNING: All featureCounts attempts failed."
-                COUNTS_GENERATED=false
-            fi
-        fi
-    fi
-else
-    echo "Skipping quantification as alignment was not completed successfully."
-    COUNTS_GENERATED=false
-fi
-
-# ====================================================================================
-# STEP 7: GENERATE EXPRESSION HEATMAP (R)
-# ====================================================================================
-
-echo "=== STEP 7: Generating expression heatmap ==="
-
-# Check if R is installed and counts were generated
-if [ "$RUN_R_HEATMAP" = true ] && [ "$COUNTS_GENERATED" = true ]; then
-    # Create R script for generating heatmap
-    cat << 'EOL' > "${BASE_DIR}/02_annotation/code/generate_top10_heatmap.R"
-#!/usr/bin/env Rscript
-
-# Get command line arguments
-args <- commandArgs(trailingOnly = TRUE)
-counts_file <- args[1]
-output_heatmap <- args[2]
-output_table <- args[3]
-
-# Create directories for outputs
-dir.create(dirname(output_heatmap), recursive = TRUE, showWarnings = FALSE)
-dir.create(dirname(output_table), recursive = TRUE, showWarnings = FALSE)
-
-# Function to safely load packages
-safe_library <- function(package_name) {
-  if (!require(package_name, character.only = TRUE, quietly = TRUE)) {
-    install.packages(package_name, repos = "https://cloud.r-project.org")
-    if (!require(package_name, character.only = TRUE, quietly = TRUE)) {
-      cat(paste("Could not install package:", package_name, "\n"))
-      return(FALSE)
+    wget -O "${temp_file}" "${REF_GENOME_URL}" || {
+        log_error "Failed to download reference genome"
+        return 1
     }
-  }
-  return(TRUE)
-}
-
-# Try to load required libraries
-dplyr_loaded <- safe_library("dplyr")
-pheatmap_loaded <- safe_library("pheatmap")
-
-# Exit if libraries aren't available
-if (!dplyr_loaded || !pheatmap_loaded) {
-  cat("Required R packages could not be loaded. Exiting.\n")
-  quit(status = 1)
-}
-
-# Try to load raw counts
-counts_loaded <- tryCatch({
-  counts <- read.delim(counts_file, comment.char = "#")
-  TRUE
-}, error = function(e) {
-  cat(paste("Error loading counts file:", e$message, "\n"))
-  FALSE
-})
-
-if (!counts_loaded) {
-  cat("Could not load counts file. Exiting.\n")
-  quit(status = 1)
-}
-
-# Safety check for empty or invalid data
-if (nrow(counts) == 0 || ncol(counts) <= 1) {
-  cat("Counts file appears to be empty or invalid. Exiting.\n")
-  quit(status = 1)
-}
-
-tryCatch({
-  # Get count columns (all numeric columns except the first)
-  count_cols <- which(sapply(counts, is.numeric))
-  if (length(count_cols) == 0) {
-    cat("Could not identify count columns. Using all columns except first.\n")
-    count_cols <- 2:ncol(counts)
-  }
-  
-  # Exclude first column (Geneid) from count_cols if it's included
-  if (1 %in% count_cols) {
-    count_cols <- count_cols[count_cols != 1]
-  }
-  
-  count_data <- counts[, count_cols, drop = FALSE]
-  
-  # Rename columns for simplicity by removing file paths
-  samples <- gsub(".*\\/([^/]+)\\.bam", "\\1", colnames(count_data))
-  colnames(count_data) <- samples
-  
-  # Keep gene IDs separately
-  gene_ids <- counts$Geneid
-  
-  # Total counts per sample
-  total_counts <- colSums(count_data)
-  
-  # Safety check for zero total counts
-  if (any(total_counts == 0)) {
-    cat("Warning: Some samples have zero total counts. Using pseudocount for normalization.\n")
-    total_counts[total_counts == 0] <- 1
-  }
-  
-  # CPM normalization
-  cpm_data <- sweep(count_data, 2, total_counts, FUN=function(x, y) (x / y) * 1e6)
-  cpm_data <- data.frame(Geneid = gene_ids, cpm_data)
-  
-  # Identify top 10 genes by mean CPM
-  top_genes <- cpm_data %>%
-    mutate(mean_cpm = rowMeans(select(., -Geneid))) %>%
-    arrange(desc(mean_cpm)) %>%
-    head(10)
-  
-  # Extract just the gene ID and numerical columns for heatmap
-  heatmap_data <- top_genes %>% select(-mean_cpm)
-  rownames(heatmap_data) <- heatmap_data$Geneid
-  heatmap_data$Geneid <- NULL
-  
-  # Save top genes table
-  write.csv(top_genes, file = output_table, row.names = FALSE)
-  
-  # Create heatmap
-  pdf(output_heatmap, width = 8, height = 6)
-  pheatmap(log2(heatmap_data + 1),
-           main = "Top 10 Expressed Genes",
-           cluster_rows = TRUE,
-           cluster_cols = TRUE,
-           fontsize_row = 8,
-           fontsize_col = 10,
-           scale = "row")
-  dev.off()
-  
-  cat("Analysis complete!\n")
-  cat("Top 10 genes table saved to:", output_table, "\n")
-  cat("Heatmap saved to:", output_heatmap, "\n")
-}, error = function(e) {
-  cat(paste("Error in R analysis:", e$message, "\n"))
-  quit(status = 1)
-})
-EOL
-
-    echo "Running R script to generate heatmap..."
-    export QT_QPA_PLATFORM=offscreen
-    Rscript "${BASE_DIR}/02_annotation/code/generate_top10_heatmap.R" \
-      "${COUNTS_DIR}/raw_counts.txt" \
-      "${ANNOTATION_PLOTS_DIR}/top10_genes_heatmap.pdf" \
-      "${ANNOTATION_PLOTS_DIR}/top10_genes_table.csv"
     
-    # Check if outputs were created
-    if [ -f "${ANNOTATION_PLOTS_DIR}/top10_genes_heatmap.pdf" ] && [ -f "${ANNOTATION_PLOTS_DIR}/top10_genes_table.csv" ]; then
-        echo "Heatmap and top genes table generated successfully."
-        HEATMAP_GENERATED=true
-    else
-        echo "WARNING: Heatmap generation may have failed."
-        HEATMAP_GENERATED=false
+    mv "${temp_file}" "${final_file}"
+    
+    gunzip -f "${final_file}" || {
+        log_error "Failed to decompress reference genome"
+        return 1
+    }
+    
+    if ! validate_file_size "${REF_DIR}/${REF_GENOME_FILE}" 1000000; then
+        log_error "Reference genome file appears to be incomplete"
+        return 1
+    }
+    
+    log_info "Reference genome downloaded and decompressed successfully"
+}
+
+# Download sample data
+download_sample_data() {
+    log_info "Downloading sample data..."
+    
+    local download_errors=0
+    
+    for sample in "${!SAMPLES[@]}"; do
+        local base_url="${SAMPLES[${sample}]}"
+        
+        for read in 1 2; do
+            local filename="${sample}_${read}.fastq.gz"
+            local temp_file="${SAMPLES_DIR}/${filename}.tmp"
+            local final_file="${SAMPLES_DIR}/${filename}"
+            local url="${base_url}/${filename}"
+            
+            if [[ -f "${final_file}" ]]; then
+                log_info "Sample file already exists: ${filename}"
+                continue
+            }
+            
+            log_info "Downloading ${filename}..."
+            
+            if ! wget -O "${temp_file}" "${url}"; then
+                log_error "Failed to download ${filename}"
+                ((download_errors++))
+                continue
+            fi
+            
+            mv "${temp_file}" "${final_file}"
+            
+            if ! validate_file_size "${final_file}" 1000000; then
+                log_error "Sample file appears to be incomplete: ${filename}"
+                ((download_errors++))
+                continue
+            }
+            
+            log_info "Successfully downloaded ${filename}"
+        done
+    done
+    
+    if ((download_errors > 0)); then
+        log_error "${download_errors} sample files failed to download"
+        return 1
     fi
-else
-    if [ "$RUN_R_HEATMAP" != true ]; then
-        echo "Skipping heatmap generation as R is not installed."
-        echo "To enable this step, install R with: sudo apt install -y r-base r-base-core"
-        echo "Then install required packages with: sudo Rscript -e 'install.packages(c(\"dplyr\", \"pheatmap\"), repos=\"https://cloud.r-project.org\")'"
-    elif [ "$COUNTS_GENERATED" != true ]; then
-        echo "Skipping heatmap generation as count data was not generated."
+    
+    touch "${SAMPLES_DIR}/DOWNLOAD_COMPLETE.txt"
+    log_info "All sample data downloaded successfully"
+}
+
+#############################################################################
+# Quality Control Functions
+#############################################################################
+
+# Run FastQC on samples
+run_fastqc() {
+    log_info "Running FastQC analysis..."
+    
+    local fastqc_errors=0
+    
+    mkdir -p "${QC_DIR}/fastqc"
+    
+    for file in "${SAMPLES_DIR}"/*.fastq.gz; do
+        if [[ -f "${file}" ]]; then
+            log_info "Running FastQC on $(basename "${file}")..."
+            
+            if ! fastqc -o "${QC_DIR}/fastqc" -t "${THREADS}" "${file}"; then
+                log_error "FastQC failed for $(basename "${file}")"
+                ((fastqc_errors++))
+            fi
+        fi
+    done
+    
+    if ((fastqc_errors > 0)); then
+        log_error "FastQC failed for ${fastqc_errors} files"
+        return 1
     fi
-    echo "Raw counts are available at: ${COUNTS_DIR}/raw_counts.txt"
-    HEATMAP_GENERATED=false
-fi
+    
+    log_info "FastQC analysis completed successfully"
+}
 
-# ====================================================================================
-# STEP 8: GENERATE MASTER QC REPORT
-# ====================================================================================
+# Run MultiQC
+run_multiqc() {
+    local input_dir="$1"
+    local output_dir="$2"
+    local title="$3"
+    
+    log_info "Running MultiQC for ${title}..."
+    
+    mkdir -p "${output_dir}"
+    
+    if ! multiqc -f -o "${output_dir}" "${input_dir}"; then
+        log_error "MultiQC failed for ${title}"
+        return 1
+    fi
+    
+    log_info "MultiQC completed successfully for ${title}"
+}
 
-echo "=== STEP 8: Generating master QC report ==="
+#############################################################################
+# Alignment Functions
+#############################################################################
 
-# Create a directory for the master QC report
-mkdir -p "$MASTER_QC_DIR"
+# Build HISAT2 index
+build_hisat2_index() {
+    log_info "Building HISAT2 index..."
+    
+    if [[ -f "${HISAT_INDEX_DIR}/genome.1.ht2" ]]; then
+        log_info "HISAT2 index already exists, skipping build"
+        return 0
+    fi
+    
+    mkdir -p "${HISAT_INDEX_DIR}"
+    
+    if ! hisat2-build "${REF_DIR}/${REF_GENOME_FILE}" "${HISAT_INDEX_DIR}/genome" -p "${THREADS}"; then
+        log_error "HISAT2 index building failed"
+        return 1
+    fi
+    
+    log_info "HISAT2 index built successfully"
+}
 
-# Run MultiQC on all relevant directories to create a comprehensive QC report
-echo "Running MultiQC to create master QC report..."
-multiqc -f -o "$MASTER_QC_DIR" \
-    "$FASTQC_OUT" \
-    "${BASE_DIR}/01_allignment/QC" \
-    "${BASE_DIR}/01_allignment/alignment" \
-    "$COUNTS_DIR"
+# Align reads with HISAT2
+align_reads() {
+    log_info "Aligning reads with HISAT2..."
+    
+    local alignment_errors=0
+    
+    for sample in "${!SAMPLES[@]}"; do
+        log_info "Aligning sample ${sample}..."
+        
+        local read1="${SAMPLES_DIR}/${sample}_1.fastq.gz"
+        local read2="${SAMPLES_DIR}/${sample}_2.fastq.gz"
+        local sam_file="${ALIGNMENT_DIR}/alignment/${sample}.sam"
+        local bam_file="${ALIGNMENT_DIR}/alignment/${sample}.sorted.bam"
+        local log_file="${ALIGNMENT_DIR}/alignment/${sample}.log"
+        
+        # Check input files
+        if ! check_file "${read1}" || ! check_file "${read2}"; then
+            log_error "Input files missing for sample ${sample}"
+            ((alignment_errors++))
+            continue
+        }
+        
+        # Align reads
+        if ! hisat2 -x "${HISAT_INDEX_DIR}/genome" \
+                    -1 "${read1}" \
+                    -2 "${read2}" \
+                    -S "${sam_file}" \
+                    --threads "${THREADS}" \
+                    2> "${log_file}"; then
+            log_error "HISAT2 alignment failed for sample ${sample}"
+            ((alignment_errors++))
+            continue
+        }
+        
+        # Convert SAM to BAM and sort
+        if ! samtools view -bS "${sam_file}" | \
+             samtools sort -@ "${THREADS}" -o "${bam_file}"; then
+            log_error "SAM to BAM conversion failed for sample ${sample}"
+            ((alignment_errors++))
+            continue
+        }
+        
+        # Index BAM file
+        if ! samtools index "${bam_file}"; then
+            log_error "BAM indexing failed for sample ${sample}"
+            ((alignment_errors++))
+            continue
+        }
+        
+        # Remove SAM file to save space
+        rm -f "${sam_file}"
+        
+        log_info "Successfully processed sample ${sample}"
+    done
+    
+    if ((alignment_errors > 0)); then
+        log_error "Alignment failed for ${alignment_errors} samples"
+        return 1
+    fi
+    
+    log_info "All samples aligned successfully"
+}
 
-# Check if master QC report was created
-if [ -f "${MASTER_QC_DIR}/multiqc_report.html" ]; then
-    echo "Master QC report generated successfully."
-    echo "Master QC report: ${MASTER_QC_DIR}/multiqc_report.html"
-else
-    echo "WARNING: Master QC report generation may have failed."
-fi
+#############################################################################
+# Quantification Functions
+#############################################################################
 
-# Add report generation timestamp and user information
-cat > "${MASTER_QC_DIR}/report_info.txt" << EOL
-RNA-Seq Pipeline Master QC Report
-================================
-Generated on: $(date +"%Y-%m-%d %H:%M:%S")
-Generated by: ${RUN_USER}
-Pipeline version: ${SCRIPT_VERSION}
-================================
-EOL
+# Count reads with featureCounts
+count_reads() {
+    log_info "Counting reads with featureCounts..."
+    
+    local bam_files=("${ALIGNMENT_DIR}"/alignment/*.sorted.bam)
+    
+    if [[ ${#bam_files[@]} -eq 0 ]]; then
+        log_error "No BAM files found for counting"
+        return 1
+    fi
+    
+    mkdir -p "${COUNTS_DIR}"
+    
+    if ! featureCounts -p \
+                      -t gene \
+                      -g gene_id \
+                      -a "${REF_DIR}/${REF_GENOME_FILE%.fna}.gtf" \
+                      -o "${COUNTS_DIR}/raw_counts.txt" \
+                      -T "${THREADS}" \
+                      "${bam_files[@]}"; then
+        log_error "featureCounts failed"
+        return 1
+    fi
+    
+    log_info "Read counting completed successfully"
+}
 
-# ====================================================================================
-# PIPELINE COMPLETE
-# ====================================================================================
+#############################################################################
+# Main Pipeline Function
+#############################################################################
 
-echo ""
-echo "======================================================================"
-echo "RNA-Seq PIPELINE COMPLETE"
-echo "======================================================================"
-echo ""
-echo "Pipeline execution completed. Results can be found in:"
-echo "- QC Results: ${BASE_DIR}/01_allignment/QC/"
-echo "- Alignment Results: ${BASE_DIR}/01_allignment/alignment/"
-echo "- Counts and Expression: ${BASE_DIR}/02_annotation/"
-echo "- Master QC Report: ${MASTER_QC_DIR}/multiqc_report.html"
-echo ""
+run_pipeline() {
+    local start_time=$(date +%s)
+    
+    # Print pipeline header
+    print_section_header "RNA-Seq Analysis Pipeline v${VERSION}"
+    log_info "Started by: ${SCRIPT_USER} on ${START_TIME}"
+    
+    # Initialize pipeline
+    setup_logging
+    create_directory_structure || exit 1
+    check_requirements || exit 1
+    
+    # Download data
+    print_section_header "=== STEP 0: Downloading data ==="
+    download_reference_genome || exit 1
+    download_sample_data || exit 1
+    
+    # Quality control
+    print_section_header "=== STEP 1: Quality Control ==="
+    run_fastqc || exit 1
+    run_multiqc "${QC_DIR}/fastqc" "${QC_DIR}/multiqc_fastqc" "FastQC results" || exit 1
+    
+    # Alignment
+    print_section_header "=== STEP 2: Read Alignment ==="
+    build_hisat2_index || exit 1
+    align_reads || exit 1
+    run_multiqc "${ALIGNMENT_DIR}/alignment" "${QC_DIR}/multiqc_alignment" "Alignment results" || exit 1
+    
+    # Quantification
+    print_section_header "=== STEP 3: Gene Quantification ==="
+    count_reads || exit 1
+    
+    # Generate final report
+    print_section_header "=== STEP 4: Generating Final Report ==="
+    run_multiqc "${BASE_DIR}" "${MASTER_QC_DIR}" "Complete pipeline results" || exit 1
+    
+    # Calculate execution time
+    local end_time=$(date +%s)
+    local duration=$((end_time - start_time))
+    
+    # Print completion message
+    print_section_header "RNA-Seq PIPELINE COMPLETE"
+    log_info "Pipeline execution completed in $(date -u -d @${duration} +'%H:%M:%S')"
+    log_info "Results can be found in:"
+    log_info "- QC Results: ${QC_DIR}"
+    log_info "- Alignment Results: ${ALIGNMENT_DIR}/alignment"
+    log_info "- Counts and Expression: ${COUNTS_DIR}"
+    log_info "- Master QC Report: ${MASTER_QC_DIR}/multiqc_report.html"
+    log_info "Pipeline run by: ${SCRIPT_USER}"
+    log_info "Pipeline version: ${VERSION}"
+    
+    return 0
+}
 
-echo "Pipeline Steps Summary:"
-echo "- FastQC/MultiQC: $(if [ "$FASTQC_COMPLETE" = true ]; then echo "✓ Completed"; else echo "✗ Not completed"; fi)"
-echo "- Read Cleaning: $(if [ "$CLEANING_COMPLETE" = true ]; then echo "✓ Completed"; else echo "✗ Not completed"; fi)"
-echo "- Alignment: $(if [ "$ALIGNMENT_COMPLETE" = true ]; then echo "✓ Completed"; else echo "✗ Not completed"; fi)"
-echo "- Quantification: $(if [ "$COUNTS_GENERATED" = true ]; then echo "✓ Completed"; else echo "✗ Not completed"; fi)"
-echo "- Expression Heatmap: $(if [ "$HEATMAP_GENERATED" = true ]; then echo "✓ Completed"; else echo "✗ Not completed"; fi)"
-echo ""
+#############################################################################
+# Script Entry Point
+#############################################################################
 
-echo "Files for downstream analysis:"
-if [ "$COUNTS_GENERATED" = true ]; then
-    echo "- Raw counts: ${COUNTS_DIR}/raw_counts.txt"
-else
-    echo "- Raw counts: Not generated"
-fi
-
-if [ "$HEATMAP_GENERATED" = true ]; then
-    echo "- Top 10 genes: ${ANNOTATION_PLOTS_DIR}/top10_genes_table.csv"
-    echo "- Expression heatmap: ${ANNOTATION_PLOTS_DIR}/top10_genes_heatmap.pdf"
-else
-    echo "- Expression analysis: Not generated"
-fi
-
-echo "- Master QC report: ${MASTER_QC_DIR}/multiqc_report.html"
-echo ""
-
-echo "Pipeline completed on: $(date)"
-echo "Pipeline run by: ${RUN_USER}"
-echo "Pipeline version: ${SCRIPT_VERSION}"
-echo "======================================================================"
+# Run the pipeline
+run_pipeline
