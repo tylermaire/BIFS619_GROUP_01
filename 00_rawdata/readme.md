@@ -75,4 +75,4 @@ After running, the script will produce the following structure within the direct
 
 ## Contributors
 -   BIFS619 Group 01 Team Members
--   Tyler Maire (tylermaire, last updated 2025-10-25)
+-   Uploaded and README by Tyler Maire
