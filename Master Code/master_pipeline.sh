@@ -846,7 +846,7 @@ if (nrow(counts) == 0 || ncol(counts) <= 1) {
 
 tryCatch({
   # Get count columns (all numeric columns except the first)
-  count_cols <- which(sapply(counts, is.numeric))
+  count_cols <- 7:ncol(counts)
   if (length(count_cols) == 0) {
     cat("Could not identify count columns. Using all columns except first.\n")
     count_cols <- 2:ncol(counts)
