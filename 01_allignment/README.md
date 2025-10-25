@@ -53,13 +53,15 @@ The following table shows the number of reads before and after cleaning with `fa
 
 This data is visualized in the following chart, which shows the total number of raw reads and the proportion of cleaned reads that are carried forward for alignment.
 
-![Read Counts Before and After Cleaning](image2)
+<img width="3600" height="1800" alt="pre_post_cleaning_barplot" src="https://github.com/user-attachments/assets/5f2e838d-3508-4e87-9f45-fcbb8ad23609" />
+
 
 ### Alignment Summary
 
 After alignment, the mapping rate indicates how well the cleaned reads matched the reference genome. High mapping rates (>80%) are a good indicator of a successful alignment.
 
-![Mapping Rate by Sample](image1)
+<img width="3000" height="1800" alt="mapping_percent_barplot" src="https://github.com/user-attachments/assets/3b341e3e-0f7c-463a-9335-4470f3efef09" />
+
 
 ## Output Structure
 After running, the script will populate the `01_allignment` directory:
@@ -89,3 +91,4 @@ After running, the script will populate the `01_allignment` directory:
 ## Contributors
 -   BIFS619 Group 01 Team Members
 -   Tyler Maire (tylermaire, last updated 2025-10-25)
+
