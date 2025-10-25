@@ -19,18 +19,17 @@ The repository is organized as follows:
 
 ### Instructions
 
-1. Clone the repository to your local machine:
-   ```
-   git clone https://github.com/FaithIgomodu/BIFS619_GROUP_01.git
-   ```
-
-2. For Windows users, open Ubuntu:
+1. For Windows users, open Ubuntu:
    - Search for "Ubuntu" in the Start menu and open it
    - Or open Command Prompt/PowerShell and type `wsl` to enter the Linux subsystem
 
-3. For Linux users, open a terminal:
+2. For Linux users, open a terminal:
    - Use Ctrl+Alt+T or search for "Terminal" in your application menu
-
+   
+3. Clone the repository to your local machine:
+   ```
+   git clone https://github.com/FaithIgomodu/BIFS619_GROUP_01.git
+   ```
 4. Navigate to the "Master Code" directory:
    ```
    cd BIFS619_GROUP_01/Master\ Code
