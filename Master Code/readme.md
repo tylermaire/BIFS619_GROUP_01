@@ -40,7 +40,7 @@ The specific samples from this study referenced for this project are:
 
 3.  **Clone the repository to your local machine:**
     ```bash
-    git clone https://github.com/FaithIgomodu/BIFS619_GROUP_01.git
+    [git clone https://github.com/FaithIgomodu/BIFS619_GROUP_01.git](https://github.com/tylermaire/BIFS619_GROUP_01)
     ```
 
 4.  **Navigate to the "Master Code" directory:**
