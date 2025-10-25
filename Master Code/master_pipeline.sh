@@ -148,15 +148,6 @@ check_dependency featureCounts || missing_deps=1
 check_dependency wget || missing_deps=1
 check_dependency python3 || missing_deps=1
 
-# Check for SRA tools (multiple possible commands)
-if check_dependency fasterq-dump || check_dependency fastq-dump || check_dependency prefetch; then
-    echo "✓ SRA tools are installed"
-else
-    echo "✗ SRA tools are required but not installed"
-    missing_deps=1
-    RUN_SRA_DOWNLOAD=false
-fi
-
 # Check for R
 if check_dependency Rscript; then
     echo "✓ Rscript is installed"
@@ -184,7 +175,7 @@ if [ $missing_deps -eq 1 ]; then
         
         # Install bioinformatics tools
         $CONDA_CMD install -y -c bioconda \
-            fastqc multiqc fastp hisat2 samtools subread sra-tools \
+            fastqc multiqc fastp hisat2 samtools subread wget \
             r-base r-dplyr r-pheatmap python pandas matplotlib
             
         echo "Conda environment 'rnaseq_env' created with all dependencies."
@@ -196,7 +187,7 @@ if [ $missing_deps -eq 1 ]; then
         sudo apt install -y fastqc multiqc
         sudo apt install -y fastp hisat2 samtools
         sudo apt install -y subread  # For featureCounts
-        sudo apt install -y sra-toolkit # For SRA tools
+        sudo apt install -y wget
         sudo apt install -y r-base r-base-core # For R
         sudo apt install -y python3-pip
         pip3 install --user pandas matplotlib
@@ -224,15 +215,6 @@ if [ $missing_deps -eq 1 ]; then
     check_dependency wget || missing_deps=1
     check_dependency python3 || missing_deps=1
     
-    # Check SRA tools again
-    if check_dependency fasterq-dump || check_dependency fastq-dump || check_dependency prefetch; then
-        echo "✓ SRA tools are now installed"
-        RUN_SRA_DOWNLOAD=true
-    else
-        echo "✗ SRA tools installation failed"
-        RUN_SRA_DOWNLOAD=false
-    fi
-    
     # Check R again
     if check_dependency Rscript; then
         echo "✓ Rscript is now installed"
@@ -256,31 +238,39 @@ fi
 echo "=== STEP 0: Preparing raw data ==="
 
 if [ "$RUN_SRA_DOWNLOAD" = true ]; then
-    echo "Downloading raw data from NCBI SRA..."
+    echo "Downloading raw data from EBI..."
     for sample in "${SAMPLES[@]}"; do
-        echo "Downloading ${sample} from NCBI SRA..."
-        if [ ! -f "${RAW_FASTQ_DIR}/${sample}_1.fastq.gz" ] || [ ! -f "${RAW_FASTQ_DIR}/${sample}_2.fastq.gz" ]; then
-            # Try fasterq-dump first (preferred), fall back to fastq-dump
-            if command -v fasterq-dump >/dev/null 2>&1; then
-                fasterq-dump --split-files --threads "$THREADS" --outdir "${RAW_FASTQ_DIR}" "$sample"
-            else
-                fastq-dump --split-files --outdir "${RAW_FASTQ_DIR}" "$sample"
-            fi
-            
-            # Compress the FASTQ files
-            gzip "${RAW_FASTQ_DIR}/${sample}_1.fastq"
-            gzip "${RAW_FASTQ_DIR}/${sample}_2.fastq"
+        echo "Downloading ${sample} from EBI..."
+        
+        # Construct EBI FTP URL
+        SRA_PREFIX=${sample:0:6}
+        SRA_SUFFIX=${sample: -1}
+        URL_BASE="ftp.sra.ebi.ac.uk/vol1/fastq/${SRA_PREFIX}/00${SRA_SUFFIX}/${sample}"
+
+        # Download read 1
+        if [ ! -f "${RAW_FASTQ_DIR}/${sample}_1.fastq.gz" ]; then
+            echo "Downloading ${sample}_1.fastq.gz"
+            wget -O "${RAW_FASTQ_DIR}/${sample}_1.fastq.gz" "${URL_BASE}/${sample}_1.fastq.gz"
         else
-            echo "FASTQ files for ${sample} already exist, skipping download."
+            echo "File ${sample}_1.fastq.gz already exists, skipping."
+        fi
+
+        # Download read 2
+        if [ ! -f "${RAW_FASTQ_DIR}/${sample}_2.fastq.gz" ]; then
+            echo "Downloading ${sample}_2.fastq.gz"
+            wget -O "${RAW_FASTQ_DIR}/${sample}_2.fastq.gz" "${URL_BASE}/${sample}_2.fastq.gz"
+        else
+            echo "File ${sample}_2.fastq.gz already exists, skipping."
         fi
     done
 else
-    echo "SRA download tools not available. Please manually download FASTQ files to:"
+    echo "wget not available. Please manually download FASTQ files to:"
     echo "$RAW_FASTQ_DIR"
     echo "For each sample, files should be named: <sample_id>_1.fastq.gz and <sample_id>_2.fastq.gz"
     echo "Press Enter to continue once files are in place, or Ctrl+C to exit."
     read -p ""
 fi
+
 
 # ====================================================================================
 # DOWNLOAD REFERENCE GENOME AND ANNOTATION
@@ -290,8 +280,9 @@ echo "Downloading reference genome and annotation..."
 # Download reference genome FASTA if it doesn't exist
 if [ ! -f "$REFERENCE_FASTA" ]; then
     echo "Downloading reference genome FASTA..."
-    wget -O "$REFERENCE_FASTA" "https://ftp.ncbi.nlm.nih.gov/genomes/all/GCF/000/005/845/GCF_000005845.2_ASM584v2/GCF_000005845.2_ASM584v2_genomic.fna.gz"
-    gunzip "$REFERENCE_FASTA"
+    # The user confirmed this is the correct URL
+    wget -O "${REFERENCE_FASTA}.gz" "https://ftp.ncbi.nlm.nih.gov/genomes/all/GCF/000/005/845/GCF_000005845.2_ASM584v2/GCF_000005845.2_ASM584v2_genomic.fna.gz"
+    gunzip "${REFERENCE_FASTA}.gz"
     
     # Verify the file exists and isn't empty
     if [ ! -s "$REFERENCE_FASTA" ]; then
