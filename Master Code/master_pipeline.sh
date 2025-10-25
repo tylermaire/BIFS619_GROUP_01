@@ -941,10 +941,48 @@ else
 fi
 
 # ====================================================================================
-# STEP 8: GENERATE MASTER QC REPORT
+# STEP 8: MAP TOP 10 GENES TO PRODUCTS (TABLE FOR TABLET)
 # ====================================================================================
 
-echo "=== STEP 8: Generating master QC report ==="
+echo "=== STEP 8: Mapping top 10 genes to their products ==="
+
+if [ "$HEATMAP_GENERATED" = true ]; then
+    # Input/output paths
+    TOP10_CSV="${ANNOTATION_PLOTS_DIR}/top10_genes_table.csv"
+    PRODUCTS_OUTPUT="${COUNTS_DIR}/top10_genes_products.csv"
+    
+    # Make sure GTF file exists
+    if [ ! -f "${REFERENCE_GTF}" ]; then
+        echo "ERROR: Reference GTF not found at ${REFERENCE_GTF}. Cannot map gene products."
+    else
+        # Prepare output CSV with header
+        echo "Geneid,Product" > "$PRODUCTS_OUTPUT"
+        
+        # Extract products for top 10 genes
+        # Use awk to handle potential commas in gene names and ensure correct field extraction
+        tail -n +2 "$TOP10_CSV" | cut -d',' -f1 | while read -r gene; do
+            # Find the gene_name associated with the gene_id in the GTF file
+            product=$(grep "gene_id \"$gene\"" "$REFERENCE_GTF" | sed -n 's/.*gene_name "\([^"]*\)".*/\1/p' | head -n 1)
+            
+            # If product is empty, provide a default value
+            if [ -z "$product" ]; then
+                product="N/A"
+            fi
+            
+            echo "$gene,$product" >> "$PRODUCTS_OUTPUT"
+        done
+        
+        echo "Top 10 genes products table created at: $PRODUCTS_OUTPUT"
+    fi
+else
+    echo "Skipping gene product mapping as the top 10 genes table was not generated."
+fi
+
+# ====================================================================================
+# STEP 9: GENERATE MASTER QC REPORT
+# ====================================================================================
+
+echo "=== STEP 9: Generating master QC report ==="
 
 # Create a directory for the master QC report
 mkdir -p "$MASTER_QC_DIR"
@@ -1002,12 +1040,11 @@ echo ""
 echo "Files for downstream analysis:"
 if [ "$COUNTS_GENERATED" = true ]; then
     echo "- Raw counts: ${COUNTS_DIR}/raw_counts.txt"
-else
-    echo "- Raw counts: Not generated"
 fi
 
 if [ "$HEATMAP_GENERATED" = true ]; then
     echo "- Top 10 genes: ${ANNOTATION_PLOTS_DIR}/top10_genes_table.csv"
+    echo "- Top 10 products: ${COUNTS_DIR}/top10_genes_products.csv"
     echo "- Expression heatmap: ${ANNOTATION_PLOTS_DIR}/top10_genes_heatmap.pdf"
 else
     echo "- Expression analysis: Not generated"
