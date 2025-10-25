@@ -1,0 +1,214 @@
+#!/bin/bash
+# ====================================================================================
+# BIFS619_GROUP_01 - Step 00: Data Setup and Raw QC
+# Author: Group 01 (Code from master_pipeline.sh by Tyler Maire)
+#
+# This script handles the initial data download and quality control steps.
+# ====================================================================================
+
+# ====================================================================================
+# INTRODUCTION AND USAGE INSTRUCTIONS
+# ====================================================================================
+# This script automates the initial data setup workflow including:
+# - Automatic download of raw sample data
+# - Automatic download of reference genome
+# - Quality control of raw reads (FastQC/MultiQC)
+#
+# USAGE:
+#   ./00_setup_and_qc.sh <project_directory>
+#
+# EXAMPLE:
+#   ./00_setup_and_qc.sh ~/my_rnaseq_project
+# ====================================================================================
+
+# Check if project directory was provided
+if [ $# -ne 1 ]; then
+    echo "Error: Please provide a project directory path"
+    echo "Usage: ./00_setup_and_qc.sh <project_directory>"
+    exit 1
+fi
+
+# Create project directory if it doesn't exist
+PROJECT_DIR="$1"
+mkdir -p "$PROJECT_DIR"
+echo "Project will be created in: $PROJECT_DIR"
+BASE_DIR="$PROJECT_DIR"
+
+# Variable to control download step
+RUN_SRA_DOWNLOAD=true
+
+# Record script execution details
+SCRIPT_VERSION="1.1"
+RUN_DATE=$(date +"%Y-%m-%d %H:%M:%S")
+RUN_USER="tylermaire"
+
+echo "Data Setup and Raw QC Pipeline v${SCRIPT_VERSION}"
+echo "Started by: ${RUN_USER} on ${RUN_DATE}"
+echo "======================================================================"
+
+# ====================================================================================
+# CREATE DIRECTORY STRUCTURE
+# ====================================================================================
+echo "Creating directory structure for raw data..."
+
+# Create standard directory structure for this step
+mkdir -p "${BASE_DIR}/00_rawdata/fastq_data/samples"
+mkdir -p "${BASE_DIR}/00_rawdata/fastq_data/reference"
+mkdir -p "${BASE_DIR}/00_rawdata/fastQC"
+
+# Define paths for data and outputs
+RAW_FASTQ_DIR="${BASE_DIR}/00_rawdata/fastq_data/samples"
+REFERENCE_DIR="${BASE_DIR}/00_rawdata/fastq_data/reference"
+REFERENCE_FASTA="${REFERENCE_DIR}/GCF_000005845.2.fna"
+FASTQC_OUT="${BASE_DIR}/00_rawdata/fastQC"
+
+# Sample IDs we're using for demonstration
+SAMPLES=("SRR9613403" "SRR9613404" "SRR9613405")
+THREADS=8
+
+# ====================================================================================
+# CHECK AND INSTALL DEPENDENCIES
+# ====================================================================================
+echo "Checking required software..."
+missing_deps=0
+
+check_dependency() {
+    if command -v $1 >/dev/null 2>&1; then
+        echo "✓ $1 is installed"
+        return 0
+    else
+        echo "✗ $1 is required but not installed"
+        RUN_SRA_DOWNLOAD=false # Disable download if wget is missing
+        return 1
+    fi
+}
+
+# Check all dependencies for this script
+check_dependency wget || missing_deps=1
+check_dependency gunzip || missing_deps=1
+check_dependency fastqc || missing_deps=1
+check_dependency multiqc || missing_deps=1
+
+if [ $missing_deps -eq 1 ]; then
+    echo ""
+    echo "Warning: Some dependencies are missing. The script will continue but some steps may be skipped."
+    echo "You can try installing via Conda or apt:"
+    echo "Conda: conda install -c bioconda wget fastqc multiqc"
+    echo "Apt:   sudo apt update && sudo apt install -y wget fastqc multiqc"
+fi
+
+# ====================================================================================
+# DOWNLOAD RAW DATA FROM SRA
+# ====================================================================================
+echo "=== STEP 0: Preparing raw data ==="
+
+if [ "$RUN_SRA_DOWNLOAD" = true ]; then
+    echo "Downloading raw data from EBI..."
+    for sample in "${SAMPLES[@]}"; do
+        echo "Downloading ${sample} from EBI..."
+        
+        # Construct EBI FTP URL
+        SRA_PREFIX=${sample:0:6}
+        SRA_SUFFIX=${sample: -1}
+        URL_BASE="ftp.sra.ebi.ac.uk/vol1/fastq/${SRA_PREFIX}/00${SRA_SUFFIX}/${sample}"
+
+        # Download read 1
+        if [ ! -f "${RAW_FASTQ_DIR}/${sample}_1.fastq.gz" ]; then
+            echo "Downloading ${sample}_1.fastq.gz"
+            wget -O "${RAW_FASTQ_DIR}/${sample}_1.fastq.gz" "${URL_BASE}/${sample}_1.fastq.gz"
+        else
+            echo "File ${sample}_1.fastq.gz already exists, skipping."
+        fi
+
+        # Download read 2
+        if [ ! -f "${RAW_FASTQ_DIR}/${sample}_2.fastq.gz" ]; then
+            echo "Downloading ${sample}_2.fastq.gz"
+            wget -O "${RAW_FASTQ_DIR}/${sample}_2.fastq.gz" "${URL_BASE}/${sample}_2.fastq.gz"
+        else
+            echo "File ${sample}_2.fastq.gz already exists, skipping."
+        fi
+    done
+else
+    echo "wget not available. Please manually download FASTQ files to:"
+    echo "$RAW_FASTQ_DIR"
+    echo "For each sample, files should be named: <sample_id>_1.fastq.gz and <sample_id>_2.fastq.gz"
+    echo "Press Enter to continue once files are in place, or Ctrl+C to exit."
+    read -p ""
+fi
+
+# ====================================================================================
+# DOWNLOAD REFERENCE GENOME
+# ====================================================================================
+echo "=== STEP 0b: Downloading reference genome ==="
+
+# Download reference genome FASTA if it doesn't exist
+if [ ! -f "$REFERENCE_FASTA" ]; then
+    echo "Downloading reference genome FASTA..."
+    wget -O "${REFERENCE_FASTA}.gz" "https://ftp.ncbi.nlm.nih.gov/genomes/all/GCF/000/005/845/GCF_000005845.2_ASM584v2/GCF_000005845.2_ASM584v2_genomic.fna.gz"
+    gunzip "${REFERENCE_FASTA}.gz"
+    
+    # Verify the file exists and isn't empty
+    if [ ! -s "$REFERENCE_FASTA" ]; then
+        echo "ERROR: Failed to download FASTA file or file is empty."
+        echo "Please manually add the FASTA file to: $REFERENCE_FASTA"
+        exit 1
+    else
+        echo "Reference genome FASTA downloaded successfully."
+    fi
+else
+    echo "Reference genome FASTA already exists, skipping download."
+fi
+
+# ====================================================================================
+# STEP 1: QUALITY CONTROL WITH FASTQC
+# ====================================================================================
+
+echo "=== STEP 1: Running FastQC and MultiQC ==="
+
+FASTQC_COMPLETE=false
+
+for sample in "${SAMPLES[@]}"; do
+    if [ -f "${RAW_FASTQ_DIR}/${sample}_1.fastq.gz" ] && [ -f "${RAW_FASTQ_DIR}/${sample}_2.fastq.gz" ]; then
+        echo "Running FastQC on sample ${sample}..."
+        fastqc "${RAW_FASTQ_DIR}/${sample}_1.fastq.gz" "${RAW_FASTQ_DIR}/${sample}_2.fastq.gz" -o "$FASTQC_OUT"
+        
+        # Check if FastQC output was created
+        if [ -f "${FASTQC_OUT}/${sample}_1_fastqc.html" ] && [ -f "${FASTQC_OUT}/${sample}_2_fastqc.html" ]; then
+            echo "FastQC completed successfully for ${sample}."
+        else
+            echo "WARNING: FastQC may have failed for ${sample}."
+        fi
+    else
+        echo "WARNING: FASTQ files for ${sample} not found. Skipping FastQC for this sample."
+    fi
+done
+
+# Run MultiQC to summarize FastQC results
+echo "Running MultiQC to summarize FastQC results..."
+multiqc "$FASTQC_OUT" -o "$FASTQC_OUT"
+
+# Check if MultiQC output was created
+if [ -f "${FASTQC_OUT}/multiqc_report.html" ]; then
+    echo "MultiQC completed successfully."
+    FASTQC_COMPLETE=true
+else
+    echo "WARNING: MultiQC may have failed."
+    FASTQC_COMPLETE=false
+fi
+
+# ====================================================================================
+# PIPELINE COMPLETE
+# ====================================================================================
+
+echo ""
+echo "======================================================================"
+echo "DATA SETUP AND QC PIPELINE COMPLETE"
+echo "======================================================================"
+echo ""
+echo "Pipeline execution completed. Results can be found in:"
+echo "- Raw FASTQ files: ${RAW_FASTQ_DIR}/"
+echo "- Reference Genome: ${REFERENCE_DIR}/"
+echo "- QC Reports: ${FASTQC_OUT}/"
+echo ""
+echo "Next step: Read cleaning and alignment."
+echo "======================================================================"
