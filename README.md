@@ -78,7 +78,7 @@ See the highlighted section above for the complete automated workflow.
 
 Follow the individual README files in each directory:
 
-1. **Step 1:** [[Read Cleaning & Alignment](./01_alignment/README.md)](https://github.com/tylermaire/BIFS619_GROUP_01/blob/main/01_allignment/README.md)
+1. **Step 1:** (https://github.com/tylermaire/BIFS619_GROUP_01/blob/main/01_allignment/README.md)
 2. **Step 2:** [Gene Expression Quantification](./02_annotation/README.md)
 
 **When to use manual execution:**
