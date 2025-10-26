@@ -936,7 +936,7 @@ EOL
       "$REFERENCE_GFF"
     
     # Check if outputs were created
-    if [ -f "${ANNOTATION_PLOTS_DIR}/top10_genes_heatmap.pnf" ] && [ -f "${ANNOTATION_PLOTS_DIR}/top10_genes_table.csv" ]; then
+    if [ -f "${ANNOTATION_PLOTS_DIR}/top10_genes_heatmap.png" ] && [ -f "${ANNOTATION_PLOTS_DIR}/top10_genes_table.csv" ]; then
         echo "✓ Heatmap and top genes table generated successfully."
         HEATMAP_GENERATED=true
     else
