@@ -79,8 +79,8 @@ See the highlighted section above for the complete automated workflow.
 Follow the individual README files in each directory:
 
 1. **Step 1:** (https://github.com/tylermaire/BIFS619_GROUP_01/blob/main/00_rawdata/readme.md)
-2. **Step 1:** (https://github.com/tylermaire/BIFS619_GROUP_01/blob/main/01_allignment/README.md)
-3. **Step 2:** (https://github.com/tylermaire/BIFS619_GROUP_01/blob/main/02_annotation/README.md))
+2. **Step 2:** (https://github.com/tylermaire/BIFS619_GROUP_01/blob/main/01_allignment/README.md)
+3. **Step 3:** (https://github.com/tylermaire/BIFS619_GROUP_01/blob/main/02_annotation/README.md))
 
 **When to use manual execution:**
 - You want to understand each step in detail
