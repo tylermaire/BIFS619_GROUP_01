@@ -933,9 +933,10 @@ tryCatch({
   write.csv(top_genes_output, file = output_table, row.names = FALSE)
   cat("\n✓ Table saved to:", output_table, "\n")
   
-  # Create heatmap
-  cat("✓ Generating heatmap...\n")
-  png(output_heatmap, width = 1200, height = 1000, res = 150)
+  # Create HEATMAP 1: Log2-scaled with row scaling (shows relative expression patterns)
+  cat("✓ Generating log2-scaled heatmap...\n")
+  output_heatmap_log2 <- sub("\\.png$", "_log2.png", output_heatmap)
+  png(output_heatmap_log2, width = 1200, height = 1000, res = 150)
   pheatmap(log2(heatmap_data + 1),
            main = "Top 10 Expressed Genes (CPM, log2 scale)",
            cluster_rows = TRUE,
@@ -948,9 +949,29 @@ tryCatch({
            cellwidth = 40,
            cellheight = 25)
   dev.off()
-  cat("✓ Heatmap saved to:", output_heatmap, "\n")
+  cat("✓ Log2 heatmap saved to:", output_heatmap_log2, "\n")
+  
+  # Create HEATMAP 2: Regular CPM values (shows absolute expression levels)
+  cat("✓ Generating regular CPM heatmap...\n")
+  png(output_heatmap, width = 1200, height = 1000, res = 150)
+  pheatmap(heatmap_data,
+           main = "Top 10 Expressed Genes (CPM)",
+           cluster_rows = TRUE,
+           cluster_cols = TRUE,
+           fontsize_row = 11,
+           fontsize_col = 12,
+           scale = "none",
+           color = colorRampPalette(c("white", "yellow", "orange", "red", "darkred"))(50),
+           border_color = "grey60",
+           cellwidth = 40,
+           cellheight = 25)
+  dev.off()
+  cat("✓ Regular CPM heatmap saved to:", output_heatmap, "\n")
   
   cat("\n=== Analysis complete! ===\n")
+  cat("Generated 2 heatmaps:\n")
+  cat("  1. Log2-scaled:", output_heatmap_log2, "\n")
+  cat("  2. Regular CPM:", output_heatmap, "\n")
 }, error = function(e) {
   cat(paste("\nERROR:", e$message, "\n"))
   cat("Traceback:\n")
@@ -968,8 +989,10 @@ EOL
       "$REFERENCE_GFF"
     
     # Check if outputs were created
-    if [ -f "${ANNOTATION_PLOTS_DIR}/top10_genes_heatmap.png" ] && [ -f "${ANNOTATION_PLOTS_DIR}/top10_genes_table.csv" ]; then
-        echo "✓ Heatmap and top genes table generated successfully."
+    if [ -f "${ANNOTATION_PLOTS_DIR}/top10_genes_heatmap.png" ] && \
+       [ -f "${ANNOTATION_PLOTS_DIR}/top10_genes_heatmap_log2.png" ] && \
+       [ -f "${ANNOTATION_PLOTS_DIR}/top10_genes_table.csv" ]; then
+        echo "✓ Both heatmaps and top genes table generated successfully."
         HEATMAP_GENERATED=true
     else
         echo "WARNING: Heatmap generation may have failed."
@@ -983,7 +1006,6 @@ else
     fi
     HEATMAP_GENERATED=false
 fi
-
 
 # ====================================================================================
 # STEP 8: GENERATE MASTER QC REPORT
