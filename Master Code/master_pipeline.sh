@@ -711,7 +711,7 @@ output_heatmap <- args[2]
 output_table <- args[3]
 gff_file <- args[4]
 
-cat("=== R Heatmap Generation v4.2 ===\n")
+cat("=== R Heatmap Generation v4.3 ===\n")
 cat("Counts file:", counts_file, "\n")
 cat("GFF file:", gff_file, "\n\n")
 
@@ -825,11 +825,25 @@ tryCatch({
   count_cols <- 7:ncol(counts)
   count_data <- counts[, count_cols, drop = FALSE]
   
-  # Extract sample names from BAM file paths
+  # Extract sample names from BAM file paths - ROBUST VERSION
   cat("\nExtracting sample names...\n")
-  samples <- gsub(".*/(SRR[0-9]+)\\.bam", "\\1", colnames(count_data))
-  cat("Sample names:", paste(samples, collapse = ", "), "\n")
-  colnames(count_data) <- samples
+  cat("Original column names:\n")
+  print(colnames(count_data))
+  
+  # More robust extraction - handles both / and . as path separators
+  samples <- sapply(colnames(count_data), function(x) {
+    # Extract SRR followed by digits (most reliable method)
+    m <- regexpr("SRR[0-9]+", x)
+    if (m > 0) {
+      return(regmatches(x, m))
+    } else {
+      return(x)  # If no SRR found, keep original
+    }
+  }, USE.NAMES = FALSE)
+  
+  cat("Extracted sample names:", paste(samples, collapse = ", "), "\n")
+  colnames(count_data) <- as.character(samples)
+  cat("Final column names:", paste(colnames(count_data), collapse = ", "), "\n")
   
   # Keep gene IDs
   gene_ids <- counts$Geneid
@@ -874,10 +888,21 @@ tryCatch({
   
   # Identify top 10 genes by mean CPM
   cat("\nIdentifying top 10 expressed genes...\n")
-  top_genes <- cpm_data %>%
-    mutate(mean_cpm = rowMeans(select(., starts_with("SRR")))) %>%
-    arrange(desc(mean_cpm)) %>%
-    head(10)
+  cat("CPM data columns:", paste(colnames(cpm_data), collapse = ", "), "\n")
+  
+  # Calculate mean CPM across samples (columns starting with SRR)
+  sample_cols <- grep("^SRR", colnames(cpm_data))
+  cat("Found", length(sample_cols), "sample columns\n")
+  
+  if (length(sample_cols) > 0) {
+    top_genes <- cpm_data %>%
+      mutate(mean_cpm = rowMeans(select(., all_of(sample_cols)))) %>%
+      arrange(desc(mean_cpm)) %>%
+      head(10)
+  } else {
+    cat("ERROR: No sample columns found starting with SRR!\n")
+    quit(status = 1)
+  }
   
   cat("\n=== TOP 10 GENES ===\n")
   print(top_genes %>% select(gene_id, gene_name, mean_cpm))
@@ -888,7 +913,7 @@ tryCatch({
   
   # Extract numerical columns for heatmap with gene names as row names
   heatmap_data <- top_genes %>% 
-    select(starts_with("SRR"))
+    select(all_of(sample_cols))
   
   # Use gene names as row names
   rownames(heatmap_data) <- top_genes$gene_name
@@ -896,6 +921,13 @@ tryCatch({
   cat("\nHeatmap data structure:\n")
   cat("Row names (gene names):", paste(rownames(heatmap_data), collapse = ", "), "\n")
   cat("Column names (samples):", paste(colnames(heatmap_data), collapse = ", "), "\n")
+  cat("Data dimensions:", nrow(heatmap_data), "x", ncol(heatmap_data), "\n")
+  
+  # Verify data is numeric
+  if (!all(sapply(heatmap_data, is.numeric))) {
+    cat("ERROR: Heatmap data contains non-numeric values!\n")
+    quit(status = 1)
+  }
   
   # Save table
   write.csv(top_genes_output, file = output_table, row.names = FALSE)
@@ -922,14 +954,14 @@ tryCatch({
 }, error = function(e) {
   cat(paste("\nERROR:", e$message, "\n"))
   cat("Traceback:\n")
-  traceback()
+  print(traceback())
   quit(status = 1)
 })
 EOL
 
     echo "Running R script to generate heatmap..."
     export QT_QPA_PLATFORM=offscreen
-        Rscript "${BASE_DIR}/02_annotation/code/generate_top10_heatmap.R" \
+    Rscript "${BASE_DIR}/02_annotation/code/generate_top10_heatmap.R" \
       "${COUNTS_DIR}/raw_counts.txt" \
       "${ANNOTATION_PLOTS_DIR}/top10_genes_heatmap.png" \
       "${ANNOTATION_PLOTS_DIR}/top10_genes_table.csv" \
