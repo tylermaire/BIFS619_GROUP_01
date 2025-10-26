@@ -170,15 +170,41 @@ Tab-delimited file containing:
 -   Strand: + or - strand
 -   Length: Gene length in bp
 -   Sample columns: Raw read counts per sample (SRR9613403, SRR9613404, SRR9613405)
+-   Gene name 
+
+### Top 10 Expressed Genes - Raw Counts
+
+| Geneid      | Chr          | Start   | End    | Strand | Length | SRR9613403 | SRR9613404 | SRR9613405 | Gene Name |
+|-------------|--------------|---------|--------|--------|--------|------------|------------|------------|-----------|
+| gene-b2911  | NC_000913.3  | 3073680 | 3073863| +      | 184    | 17872      | 26152      | 34745      | ssrS      |
+| gene-b3556  | NC_000913.3  | 3758241 | 3758426| -      | 186    | 3851       | 4756       | 5532       | cspA      |
+| gene-b3340  | NC_000913.3  | 3508847 | 3511192| +      | 2346   | 29235      | 36433      | 29006      | fusA      |
+| gene-b2621  | NC_000913.3  | 2757124 | 2757486| +      | 363    | 2336       | 2903       | 2594       | ssrA      |
+| gene-b3123  | NC_000913.3  | 3274087 | 3274463| +      | 377    | 2246       | 2149       | 2453       | rnpB      |
+| gene-b3320  | NC_000913.3  | 3486316 | 3486966| +      | 651    | 2005       | 2441       | 1763       | rplC      |
+| gene-b3317  | NC_000913.3  | 3485473 | 3486372| +      | 900    | 1987       | 2327       | 1714       | rplB      |
+| gene-b3985  | NC_000913.3  | 4168659 | 4169120| +      | 462    | 1884       | 2250       | 1719       | rplJ      |
+| gene-b3295  | NC_000913.3  | 3457762 | 3458814| +      | 1053   | 1781       | 2198       | 1575       | rpoA      |
+| gene-b3984  | NC_000913.3  | 4167287 | 4167958| +      | 672    | 1654       | 1875       | 1400       | rplA      |
 
 ### 2\. Top 10 Genes Table (`plots/top10_genes_table.csv`)
 
-CSV file showing the 10 most highly expressed genes with:
+### Top 10 Expressed Genes
 
--   Gene ID (e.g., `gene-b0008`)
--   Gene name (e.g., `talB`)
--   CPM values for each sample
--   Mean CPM across samples
+| gene_id      | gene_name | SRR9613403  | SRR9613404  | SRR9613405  | mean_cpm     |
+|--------------|-----------|-------------|-------------|-------------|--------------|
+| gene-b2911   | ssrS      | 108,279.83  | 135,446.53  | 201,746.44  | 148,490.93   |
+| gene-b3556   | cspA      | 23,334.29   | 24,637.45   | 32,122.47   | 26,698.07    |
+| gene-b3340   | fusA      | 17,712.29   | 18,874.86   | 16,844.92   | 17,810.69    |
+| gene-b2621   | ssrA      | 14,149.51   | 15,039.24   | 15,069.22   | 14,752.66    |
+| gene-b3123   | rnpB      | 13,611.71   | 11,121.83   | 14,252.66   | 12,995.40    |
+| gene-b3320   | rplC      | 12,134.63   | 12,648.14   | 9,945.01    | 11,575.93    |
+| gene-b3317   | rplB      | 12,034.20   | 12,074.31   | 9,736.04    | 11,281.52    |
+| gene-b3985   | rplJ      | 11,412.62   | 11,683.54   | 9,977.71    | 11,024.63    |
+| gene-b3295   | rpoA      | 10,787.53   | 11,398.34   | 9,119.11    | 10,434.99    |
+| gene-b3984   | rplA      | 10,020.59   | 9,689.17    | 8,297.16    | 9,335.64     |
+
+**Table 1:** Top 10 most highly expressed genes ranked by mean CPM (Counts Per Million) across three samples. Values represent normalized gene expression levels.
 
 Example top genes:
 
@@ -189,7 +215,8 @@ Example top genes:
 
 ### 3\. Regular CPM Heatmap
 
-![Regular CPM Heatmap](plots/top10_genes_heatmap.png)
+<img width="1200" height="1000" alt="top10_genes_heatmap" src="https://github.com/user-attachments/assets/357e440f-0087-4d85-a834-7c6837a603c0" />
+
 
 Shows absolute expression levels across samples:
 
@@ -199,6 +226,8 @@ Shows absolute expression levels across samples:
 
 ### 4\. Log2-Scaled Heatmap
 
+<img width="1200" height="1000" alt="top10_genes_heatmap_log2" src="https://github.com/user-attachments/assets/138fb749-d05d-49e4-b383-43cc2a583b9a" />
+
 Shows relative expression patterns across samples:
 
 -   Navy → White → Red (below average → average → above average)
@@ -206,18 +235,6 @@ Shows relative expression patterns across samples:
 -   Better for comparing fold-changes between samples
 -   Useful for identifying sample-specific differences
 
-### 5\. Sample Correlation Heatmap
-
-![Correlation Heatmap](plots/top10_genes_heatmap_correlation.png)
-
-Shows sample-to-sample similarity using all 4,506 genes:
-
--   Pearson correlation values displayed (0.8 to 1.0)
--   Higher values = more similar expression profiles
--   Blue → White → Red (lower → higher correlation)
--   Good for quality control and identifying outliers
-
-* * * * *
 
 Folder Structure
 ----------------
@@ -236,7 +253,6 @@ Code
 ├── plots/
 │   ├── top10_genes_heatmap.png         # Regular CPM heatmap
 │   ├── top10_genes_heatmap_log2.png    # Log2-scaled heatmap
-│   ├── top10_genes_heatmap_correlation.png  # Sample correlation
 │   └── top10_genes_table.csv           # Top 10 genes table
 └── README.md                            # This file
 
@@ -315,3 +331,4 @@ For questions or issues:
 * * * * *
 
 *Last updated: October 26, 2025*
+
