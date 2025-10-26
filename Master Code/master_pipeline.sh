@@ -903,7 +903,7 @@ tryCatch({
   
   # Create heatmap
   cat("✓ Generating heatmap...\n")
-  pdf(output_heatmap, width = 10, height = 8)
+  png(output_heatmap, width = 1200, height = 1000, res = 150)
   pheatmap(log2(heatmap_data + 1),
            main = "Top 10 Expressed Genes (CPM, log2 scale)",
            cluster_rows = TRUE,
@@ -929,14 +929,14 @@ EOL
 
     echo "Running R script to generate heatmap..."
     export QT_QPA_PLATFORM=offscreen
-    Rscript "${BASE_DIR}/02_annotation/code/generate_top10_heatmap.R" \
+        Rscript "${BASE_DIR}/02_annotation/code/generate_top10_heatmap.R" \
       "${COUNTS_DIR}/raw_counts.txt" \
-      "${ANNOTATION_PLOTS_DIR}/top10_genes_heatmap.pdf" \
+      "${ANNOTATION_PLOTS_DIR}/top10_genes_heatmap.png" \
       "${ANNOTATION_PLOTS_DIR}/top10_genes_table.csv" \
       "$REFERENCE_GFF"
     
     # Check if outputs were created
-    if [ -f "${ANNOTATION_PLOTS_DIR}/top10_genes_heatmap.pdf" ] && [ -f "${ANNOTATION_PLOTS_DIR}/top10_genes_table.csv" ]; then
+    if [ -f "${ANNOTATION_PLOTS_DIR}/top10_genes_heatmap.pnf" ] && [ -f "${ANNOTATION_PLOTS_DIR}/top10_genes_table.csv" ]; then
         echo "✓ Heatmap and top genes table generated successfully."
         HEATMAP_GENERATED=true
     else
@@ -1019,7 +1019,7 @@ fi
 
 if [ "$HEATMAP_GENERATED" = true ]; then
     echo "- Top 10 genes: ${ANNOTATION_PLOTS_DIR}/top10_genes_table.csv"
-    echo "- Expression heatmap: ${ANNOTATION_PLOTS_DIR}/top10_genes_heatmap.pdf"
+    echo "- Expression heatmap: ${ANNOTATION_PLOTS_DIR}/top10_genes_heatmap.png"
 else
     echo "- Expression analysis: Not generated"
 fi
