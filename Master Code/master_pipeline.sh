@@ -53,7 +53,7 @@ RUN_SRA_DOWNLOAD=true
 RUN_R_HEATMAP=true
 
 # Record script execution details
-SCRIPT_VERSION="4.0"
+SCRIPT_VERSION="4.2"
 RUN_DATE=$(date +"%Y-%m-%d %H:%M:%S")
 RUN_USER="tylermaire"
 
@@ -711,9 +711,9 @@ output_heatmap <- args[2]
 output_table <- args[3]
 gff_file <- args[4]
 
-cat("=== R Heatmap Generation ===\n")
+cat("=== R Heatmap Generation v4.2 ===\n")
 cat("Counts file:", counts_file, "\n")
-cat("GFF file:", gff_file, "\n")
+cat("GFF file:", gff_file, "\n\n")
 
 # Create directories for outputs
 dir.create(dirname(output_heatmap), recursive = TRUE, showWarnings = FALSE)
@@ -740,7 +740,7 @@ if (!dplyr_loaded || !pheatmap_loaded) {
   quit(status = 1)
 }
 
-# Function to extract gene names from GFF
+# Function to extract gene names from GFF - CORRECTED FOR E. coli K-12 GFF FORMAT
 extract_gene_names <- function(gff_file) {
   cat("\nExtracting gene names from GFF file...\n")
   if (!file.exists(gff_file)) {
@@ -755,21 +755,32 @@ extract_gene_names <- function(gff_file) {
     # Skip comment lines
     if (grepl("^#", line)) next
     
-    # Look for gene features
+    # Look for gene features only
     if (grepl("\tgene\t", line)) {
-      # Extract ID (gene_id)
+      # Extract ID - in E. coli K-12 GFF it's like: ID=gene-b0001
+      # featureCounts uses this full ID: gene-b0001
       id_match <- regmatches(line, regexpr('ID=[^;]+', line))
       if (length(id_match) > 0) {
+        # Keep the full ID as featureCounts uses it
         gene_id <- gsub('ID=', '', id_match)
         
-        # Try to extract Name attribute (gene name)
-        name_match <- regmatches(line, regexpr('Name=[^;]+', line))
-        gene_name <- if (length(name_match) > 0) {
-          gsub('Name=', '', name_match)
+        # Extract gene name from gene= attribute
+        # Example: gene=thrL
+        gene_name <- gene_id  # default to ID if no gene name found
+        
+        # Try to get gene name from ";gene=" attribute
+        gene_match <- regmatches(line, regexpr(';gene=[^;]+', line))
+        if (length(gene_match) > 0) {
+          gene_name <- gsub(';gene=', '', gene_match)
         } else {
-          gene_id  # Use ID if no Name
+          # If no ;gene=, try gene= at start of attributes (though unlikely in this format)
+          gene_match <- regmatches(line, regexpr('gene=[^;]+', line))
+          if (length(gene_match) > 0) {
+            gene_name <- gsub('gene=', '', gene_match)
+          }
         }
         
+        # Only add if we haven't seen this gene_id
         if (!gene_id %in% gene_map$gene_id) {
           gene_map <- rbind(gene_map, data.frame(gene_id = gene_id, gene_name = gene_name, stringsAsFactors = FALSE))
         }
@@ -778,14 +789,19 @@ extract_gene_names <- function(gff_file) {
   }
   
   cat("Found", nrow(gene_map), "genes in GFF file\n")
+  cat("Example gene mappings (first 15):\n")
+  print(head(gene_map, 15))
   return(gene_map)
 }
 
 # Load raw counts
+cat("\nLoading counts file...\n")
 counts_loaded <- tryCatch({
-  counts <- read.delim(counts_file, comment.char = "#")
+  counts <- read.delim(counts_file, comment.char = "#", stringsAsFactors = FALSE)
   cat("✓ Counts file loaded successfully\n")
   cat("Dimensions:", nrow(counts), "genes x", ncol(counts), "columns\n")
+  cat("First 10 Geneid values from counts file:\n")
+  print(head(counts$Geneid, 10))
   TRUE
 }, error = function(e) {
   cat(paste("Error loading counts file:", e$message, "\n"))
@@ -812,6 +828,7 @@ tryCatch({
   # Extract sample names from BAM file paths
   cat("\nExtracting sample names...\n")
   samples <- gsub(".*/(SRR[0-9]+)\\.bam", "\\1", colnames(count_data))
+  cat("Sample names:", paste(samples, collapse = ", "), "\n")
   colnames(count_data) <- samples
   
   # Keep gene IDs
@@ -820,6 +837,9 @@ tryCatch({
   # CPM normalization
   cat("\nPerforming CPM normalization...\n")
   total_counts <- colSums(count_data)
+  cat("Total counts per sample:\n")
+  print(total_counts)
+  
   if (any(total_counts == 0)) {
     cat("Warning: Some samples have zero total counts. Using pseudocount.\n")
     total_counts[total_counts == 0] <- 1
@@ -830,10 +850,24 @@ tryCatch({
   
   # Map gene IDs to gene names
   cat("\nMapping gene IDs to gene names...\n")
-  if (!is.null(gene_map)) {
+  if (!is.null(gene_map) && nrow(gene_map) > 0) {
+    cat("Merging counts with gene map...\n")
+    cat("Before merge - CPM data rows:", nrow(cpm_data), "\n")
+    cat("Gene map rows:", nrow(gene_map), "\n")
+    
+    # Merge and keep all genes from cpm_data
     cpm_data <- merge(gene_map, cpm_data, by.x = "gene_id", by.y = "Geneid", all.y = TRUE)
+    
+    cat("After merge - CPM data rows:", nrow(cpm_data), "\n")
+    
+    # Fill in missing gene names with gene IDs
     cpm_data$gene_name[is.na(cpm_data$gene_name)] <- cpm_data$gene_id[is.na(cpm_data$gene_name)]
+    
+    cat("✓ Gene names mapped successfully\n")
+    cat("Example mappings after merge (first 15):\n")
+    print(head(cpm_data[, c("gene_id", "gene_name")], 15))
   } else {
+    cat("Using gene IDs as gene names (no gene map available)\n")
     cpm_data$gene_name <- cpm_data$Geneid
     cpm_data$gene_id <- cpm_data$Geneid
   }
@@ -845,7 +879,7 @@ tryCatch({
     arrange(desc(mean_cpm)) %>%
     head(10)
   
-  cat("Top 10 genes:\n")
+  cat("\n=== TOP 10 GENES ===\n")
   print(top_genes %>% select(gene_id, gene_name, mean_cpm))
   
   # Create table for output
@@ -855,34 +889,39 @@ tryCatch({
   # Extract numerical columns for heatmap with gene names as row names
   heatmap_data <- top_genes %>% 
     select(starts_with("SRR"))
+  
+  # Use gene names as row names
   rownames(heatmap_data) <- top_genes$gene_name
   
-  cat("\nHeatmap structure:\n")
-  cat("Row names (genes):", paste(rownames(heatmap_data), collapse = ", "), "\n")
+  cat("\nHeatmap data structure:\n")
+  cat("Row names (gene names):", paste(rownames(heatmap_data), collapse = ", "), "\n")
   cat("Column names (samples):", paste(colnames(heatmap_data), collapse = ", "), "\n")
   
   # Save table
   write.csv(top_genes_output, file = output_table, row.names = FALSE)
-  cat("✓ Table saved to:", output_table, "\n")
+  cat("\n✓ Table saved to:", output_table, "\n")
   
   # Create heatmap
-  cat("\nGenerating heatmap...\n")
+  cat("✓ Generating heatmap...\n")
   pdf(output_heatmap, width = 10, height = 8)
   pheatmap(log2(heatmap_data + 1),
            main = "Top 10 Expressed Genes (CPM, log2 scale)",
            cluster_rows = TRUE,
            cluster_cols = TRUE,
-           fontsize_row = 10,
+           fontsize_row = 11,
            fontsize_col = 12,
            scale = "row",
            color = colorRampPalette(c("navy", "white", "firebrick3"))(50),
-           border_color = "grey60")
+           border_color = "grey60",
+           cellwidth = 40,
+           cellheight = 25)
   dev.off()
   cat("✓ Heatmap saved to:", output_heatmap, "\n")
   
   cat("\n=== Analysis complete! ===\n")
 }, error = function(e) {
   cat(paste("\nERROR:", e$message, "\n"))
+  cat("Traceback:\n")
   traceback()
   quit(status = 1)
 })
@@ -912,6 +951,7 @@ else
     fi
     HEATMAP_GENERATED=false
 fi
+
 
 # ====================================================================================
 # STEP 8: GENERATE MASTER QC REPORT
