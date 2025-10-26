@@ -310,6 +310,7 @@ Rscript -e 'install.packages(c("dplyr", "pheatmap"), repos="https://cloud.r-proj
 - **fastp:** Chen S, Zhou Y, Chen Y, Gu J (2018). fastp: an ultra-fast all-in-one FASTQ preprocessor. *Bioinformatics*, 34(17):i884-i890.
 - **pheatmap:** Kolde R (2019). pheatmap: Pretty Heatmaps. R package version 1.0.12.
 - **MultiQC:** Ewels P, Magnusson M, Lundin S, Käller M (2016). MultiQC: summarize analysis results for multiple tools and samples in a single report. *Bioinformatics*, 32(19):3047-3048.
+- **Study where data was gathered from** O'Rourke, A., et al. (2020). Mechanism-of-Action Classification of Antibiotics by Global Transcriptome Profiling. Antimicrobial agents and chemotherapy, 64(3). https://doi.org/10.1128/AAC.01207-19
 
 ---
 
