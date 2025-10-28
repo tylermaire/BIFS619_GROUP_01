@@ -34,7 +34,6 @@
 > - Allow manual execution of specific steps if needed
 > - Serve as documentation and reference material
 > 
-> **Pipeline Version:** 4.2  
 > **No manual setup required - the script does everything for you!**
 
 ---
@@ -45,7 +44,7 @@ This repository contains a complete RNA-seq analysis pipeline for **BIFS619** de
 
 **Pipeline Version:** 4.3  
 **Last Updated:** October 26, 2025  
-**Authors:** Tyler Maire, Kenneth Roman
+**Authors:** Tyler Maire, Kenneth Roman, Michael Alemu, Johnson Mensah, Faith Igomodu
 
 ---
 
