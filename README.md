@@ -62,7 +62,7 @@ This repository contains a complete RNA-seq analysis pipeline for **BIFS619** de
 
 ## 🎯 Two Ways to Run This Analysis
 
-### Option 1: Automated Master Pipeline (Recommended)
+### Option 1: Automated Master Pipeline (Highly Recommended)
 
 See the highlighted section above for the complete automated workflow.
 
@@ -75,7 +75,7 @@ See the highlighted section above for the complete automated workflow.
 
 ### Option 2: Manual Step-by-Step Execution
 
-Follow the individual README files in each directory:
+Follow the individual README files in each directory: (More error prone, will take much longer to run)
 
 1. **Step 1:** (https://github.com/tylermaire/BIFS619_GROUP_01/blob/main/00_rawdata/readme.md)
 2. **Step 2:** (https://github.com/tylermaire/BIFS619_GROUP_01/blob/main/01_allignment/README.md)
