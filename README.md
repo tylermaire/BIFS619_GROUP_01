@@ -121,6 +121,7 @@ BIFS619_GROUP_01/
 │   ├── counts/             # Raw and normalized counts
 │   ├── plots/              # Heatmaps and visualizations
 │   └── README.md            # Manual step-by-step guide
+├── Reference_genome_compare/ # Code by Mike to compare referance genomes 
 └── README.md               # This file
 ```
 
